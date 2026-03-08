@@ -30,19 +30,30 @@ interface HypothesisData {
   }>;
   research_brief: string;
   experiment_status?: string;
+  experiment?: {
+    status?: string;
+    interpretation?: {
+      verdict?: string;
+      confidence?: number;
+      concerns?: string[];
+      next_steps?: string[];
+    };
+  };
 }
 
 export default function HypothesisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [data, setData] = useState<HypothesisData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const result = await getHypothesis(id);
         setData(result);
-      } catch {
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load hypothesis");
         setData(null);
       }
       setLoading(false);
@@ -61,6 +72,11 @@ export default function HypothesisPage({ params }: { params: Promise<{ id: strin
   if (!data) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-12">
+        {error && (
+          <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
         <p className="text-sm text-slate-400">Hypothesis not found.</p>
       </div>
     );
@@ -183,26 +199,57 @@ export default function HypothesisPage({ params }: { params: Promise<{ id: strin
         </Card>
       )}
 
-      {/* Experiment Status */}
-      {data.experiment_status && (
+      {/* Experiment Results */}
+      {(data.experiment_status || data.experiment) && (
         <>
           <Separator className="my-6" />
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Experiment Status</CardTitle>
+              <CardTitle className="text-base">Experiment Results</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Badge
-                className={
-                  data.experiment_status === "completed"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : data.experiment_status === "in_progress"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-600"
-                }
-              >
-                {data.experiment_status}
-              </Badge>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Badge
+                  className={
+                    (data.experiment?.interpretation?.verdict || data.experiment_status) === "validated"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : (data.experiment?.interpretation?.verdict || data.experiment_status) === "refuted"
+                        ? "bg-red-100 text-red-700"
+                        : data.experiment_status === "completed"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : data.experiment_status === "in_progress"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-600"
+                  }
+                >
+                  {data.experiment?.interpretation?.verdict || data.experiment_status || "pending"}
+                </Badge>
+                {data.experiment?.interpretation?.confidence !== undefined && (
+                  <span className="text-sm text-slate-600">
+                    Confidence: {(data.experiment.interpretation.confidence * 100).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+              {data.experiment?.interpretation?.concerns && data.experiment.interpretation.concerns.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-500">Concerns</p>
+                  <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+                    {data.experiment.interpretation.concerns.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {data.experiment?.interpretation?.next_steps && data.experiment.interpretation.next_steps.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-500">Next Steps</p>
+                  <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
+                    {data.experiment.interpretation.next_steps.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

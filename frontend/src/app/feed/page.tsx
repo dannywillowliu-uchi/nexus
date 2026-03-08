@@ -19,17 +19,20 @@ export default function FeedPage() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [diseaseFilter, setDiseaseFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
+      setError(null);
       try {
         const data = await getFeed({
           disease_area: diseaseFilter || undefined,
           limit: 20,
         });
         setItems(Array.isArray(data) ? data : data.items || []);
-      } catch {
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load feed");
         setItems([]);
       }
       setLoading(false);
@@ -53,6 +56,12 @@ export default function FeedPage() {
           className="max-w-sm"
         />
       </div>
+
+      {error && (
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Feed */}
       <div className="space-y-4">

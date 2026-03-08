@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from nexus.api.deps import event_store
 from nexus.db.models import SessionRequest
 from nexus.harness.models import Event
-from nexus.pipeline.orchestrator import run_pipeline
+from nexus.harness.runner import run_research_session
 
 router = APIRouter()
 
@@ -25,28 +25,11 @@ _session_results: dict[str, dict] = {}
 async def create_session(request: SessionRequest):
 	session_id = str(uuid.uuid4())
 
-	async def on_event(event_type: str, data: dict) -> None:
-		event = Event(
-			event_id=str(uuid.uuid4()),
-			session_id=session_id,
-			event_type=event_type,
-			output_data=data,
-		)
-		event_store.add(event)
-		if event_type == "pipeline_complete":
-			_session_results[session_id] = data
+	async def _wrap(sid: str, req: SessionRequest) -> None:
+		result = await run_research_session(sid, req, event_store)
+		_session_results[sid] = result
 
-	task = asyncio.create_task(
-		run_pipeline(
-			query=request.query,
-			start_entity=request.start_entity,
-			start_type=request.start_type,
-			target_types=request.target_types,
-			max_hypotheses=request.max_hypotheses,
-			max_pivots=request.max_pivots,
-			on_event=on_event,
-		)
-	)
+	task = asyncio.create_task(_wrap(session_id, request))
 	_active_tasks[session_id] = task
 
 	return {"session_id": session_id, "status": "created"}
@@ -73,7 +56,7 @@ async def stream_events(session_id: str):
 						"data": event.output_data,
 					}
 					yield f"data: {json.dumps(data)}\n\n"
-					if event.event_type == "pipeline_complete":
+					if event.event_type in ("pipeline_complete", "session_completed"):
 						break
 				except asyncio.TimeoutError:
 					yield "data: {\"event_type\": \"keepalive\"}\n\n"
@@ -106,20 +89,48 @@ async def get_session_report(session_id: str):
 	if not events:
 		return {"session_id": session_id, "status": "not_found", "hypotheses": []}
 
-	# Check if pipeline is complete
-	complete_events = [e for e in events if e.event_type == "pipeline_complete"]
-	if not complete_events:
+	# Derive status from events + task state
+	event_types = [e.event_type for e in events]
+	if "session_completed" in event_types or "pipeline_complete" in event_types:
+		status = "completed"
+	else:
 		task = _active_tasks.get(session_id)
 		status = "running" if task and not task.done() else "unknown"
-		return {"session_id": session_id, "status": status, "hypotheses": [], "events_count": len(events)}
 
-	# Extract hypothesis data from events
+	# Try cached result first (has full hypothesis data)
+	cached = _session_results.get(session_id)
+	if cached:
+		return {
+			"session_id": session_id,
+			"status": "completed",
+			"hypotheses": cached.get("hypotheses", []),
+			"events_count": len(events),
+		}
+
+	# Fallback: extract from events
 	hypothesis_events = [e for e in events if e.event_type == "hypothesis_scored"]
 	hypotheses = [e.output_data for e in hypothesis_events if e.output_data]
 
+	# Count pivots
+	pivot_count = sum(1 for e in events if e.event_type == "pivot")
+
+	# Build timeline
+	timeline = [
+		{
+			"event_id": e.event_id,
+			"event_type": e.event_type,
+			"data": e.output_data,
+			"timestamp": e.timestamp,
+		}
+		for e in events
+	]
+
 	return {
 		"session_id": session_id,
-		"status": "completed",
+		"status": status,
 		"hypotheses": hypotheses,
+		"hypothesis_count": len(hypotheses),
+		"pivot_count": pivot_count,
 		"events_count": len(events),
+		"timeline": timeline,
 	}

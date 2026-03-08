@@ -102,7 +102,7 @@
 		"cas_number": "1744-22-5",
 		"smiles": "NC1=NC2=CC=C(OC(F)(F)F)C=C2S1",
 		"inchi_key": "FTALBRSUTCGOEG-UHFFFAOYSA-N",
-		"molecular_weight": 234.20,
+		"molecular_weight": 234.2,
 		"iupac_name": "6-(trifluoromethoxy)-1,3-benzothiazol-2-amine",
 		"pubchem_cid": 5070,
 		"supplier": "Sigma-Aldrich",
@@ -138,5 +138,28 @@
 		"stock_concentration_uM": 100000,
 		"solvent": "Water",
 		"storage_temp_C": 4
+	},
+	"donepezil": {
+		"name": "Donepezil",
+		"cas_number": "CHEBI:145499",
+		"smiles": "",
+		"inchi_key": "ADEBPBSSDYVVLD-UHFFFAOYSA-N",
+		"molecular_weight": 379.5,
+		"iupac_name": "2-[(1-benzylpiperidin-4-yl)methyl]-5,6-dimethoxy-2,3-dihydroinden-1-one",
+		"pubchem_cid": 3152,
+		"supplier": "",
+		"catalog_number": "",
+		"stock_concentration_uM": 10000.0,
+		"solvent": "DMSO",
+		"storage_temp_C": -20.0,
+		"test_concentrations_uM": [
+			100,
+			50,
+			25,
+			10,
+			5,
+			1,
+			0.1
+		]
 	}
 }

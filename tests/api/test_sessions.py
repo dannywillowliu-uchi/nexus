@@ -18,8 +18,8 @@ async def client():
 
 
 async def test_create_session(client):
-	with patch("nexus.api.routes.sessions.run_pipeline", new_callable=AsyncMock) as mock_pipeline:
-		mock_pipeline.return_value = None
+	with patch("nexus.api.routes.sessions.run_research_session", new_callable=AsyncMock) as mock_pipeline:
+		mock_pipeline.return_value = {"session_id": "x", "hypotheses": [], "pivot_count": 0, "events_count": 0}
 		resp = await client.post("/api/sessions", json={
 			"query": "test query",
 			"disease_area": "oncology",

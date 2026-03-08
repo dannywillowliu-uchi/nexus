@@ -52,6 +52,7 @@ export default function QueryPage() {
   const [maxHypotheses, setMaxHypotheses] = useState(10);
   const [maxPivots, setMaxPivots] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function toggleTarget(type: string) {
     setTargetTypes((prev) =>
@@ -62,6 +63,7 @@ export default function QueryPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+    setError(null);
     try {
       const result = await createSession({
         query,
@@ -76,7 +78,8 @@ export default function QueryPage() {
       if (result.session_id) {
         router.push(`/session/${result.session_id}`);
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create session");
       setSubmitting(false);
     }
   }
@@ -87,6 +90,12 @@ export default function QueryPage() {
       <p className="mb-8 text-slate-500">
         Define your discovery parameters and launch an autonomous research session.
       </p>
+
+      {error && (
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <Card>

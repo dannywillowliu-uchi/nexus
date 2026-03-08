@@ -1,9 +1,15 @@
+from __future__ import annotations
+
+import asyncio
+import uuid
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from nexus.agents.literature.search import search_papers
-from nexus.graph.abc import find_abc_hypotheses, find_drug_repurposing_candidates
-from nexus.pipeline.orchestrator import score_hypothesis
+from nexus.api.deps import event_store
+from nexus.db.models import SessionRequest
+from nexus.harness.runner import run_research_session
 
 router = APIRouter()
 
@@ -23,24 +29,23 @@ class LiteratureQuery(BaseModel):
 
 @router.post("/query")
 async def quick_query(request: QuickQuery):
-	"""Run ABC traversal and return scored hypotheses."""
-	hypotheses = await find_abc_hypotheses(
-		source_name=request.source_name,
-		source_type=request.source_type,
-		target_type=request.target_type,
-		max_results=request.max_results,
+	"""Run full research session for a quick query."""
+	session_id = str(uuid.uuid4())
+
+	session_request = SessionRequest(
+		query=f"{request.source_name} {request.target_type}",
+		disease_area=request.target_type if request.target_type == "Disease" else "",
+		start_entity=request.source_name,
+		start_type=request.source_type,
+		target_types=[request.target_type],
+		max_hypotheses=request.max_results,
 	)
 
-	scored = [score_hypothesis(h, []) for h in hypotheses]
-	scored.sort(key=lambda h: h.get("overall_score", 0), reverse=True)
+	asyncio.create_task(
+		run_research_session(session_id, session_request, event_store)
+	)
 
-	return {
-		"source": request.source_name,
-		"source_type": request.source_type,
-		"target_type": request.target_type,
-		"count": len(scored),
-		"hypotheses": scored,
-	}
+	return {"session_id": session_id, "status": "created"}
 
 
 @router.post("/literature")

@@ -7,11 +7,9 @@ import { Separator } from "@/components/ui/separator";
 import { streamSessionEvents } from "@/lib/api";
 
 interface SessionEvent {
-  type: string;
+  event_type: string;
+  data?: Record<string, unknown>;
   timestamp?: string;
-  tool_name?: string;
-  message?: string;
-  hypothesis?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -22,6 +20,43 @@ interface Hypothesis {
   a_term?: string;
   b_term?: string;
   c_term?: string;
+  experiment_verdict?: string;
+}
+
+function formatEventMessage(ev: SessionEvent): string {
+  const data = ev.data || {};
+  switch (ev.event_type) {
+    case "stage_start":
+      return `Starting ${data.stage || "unknown"} stage${data.entity ? ` for ${data.entity}` : ""}`;
+    case "stage_complete": {
+      const stage = data.stage || "unknown";
+      if (stage === "literature")
+        return `Literature complete: ${data.papers || 0} papers, ${data.triples || 0} triples`;
+      if (stage === "graph")
+        return `Graph complete: ${data.hypotheses || 0} hypotheses found, ${data.scored || 0} scored`;
+      return `${stage} stage complete`;
+    }
+    case "triples_merged":
+      return `Merged ${data.count || 0} triples into knowledge graph`;
+    case "pivot":
+      return `Pivoted to ${data.entity || "new entity"}: ${data.reason || ""}`;
+    case "branch":
+      return `Branched to explore ${data.entity || "new entity"}: ${data.reason || ""}`;
+    case "pipeline_complete":
+      return `Pipeline complete: ${data.hypotheses || 0} hypotheses, ${data.pivots || 0} pivots`;
+    case "experiment_complete":
+      return `Experiment complete for "${data.hypothesis_title || "hypothesis"}": ${data.verdict || data.status || "done"}`;
+    case "experiment_retry":
+      return `Experiment retry for "${data.hypothesis_title || "hypothesis"}": ${data.verdict || data.status || "retried"} — ${data.reason || ""}`;
+    case "session_created":
+      return "Research session started";
+    case "session_completed":
+      return `Session complete: ${data.hypotheses_count || 0} hypotheses, ${data.pivot_count || 0} pivots`;
+    case "keepalive":
+      return "";
+    default:
+      return ev.event_type;
+  }
 }
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,50 +66,94 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [status, setStatus] = useState("connecting");
   const [stepCount, setStepCount] = useState(0);
   const [pivotCount, setPivotCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const source = streamSessionEvents(id, (event: Record<string, unknown>) => {
-      const ev = event as SessionEvent;
-      setEvents((prev) => [...prev, ev]);
-      setStepCount((prev) => prev + 1);
+    const source = streamSessionEvents(
+      id,
+      (raw: Record<string, unknown>) => {
+        const ev: SessionEvent = {
+          event_type: (raw.event_type as string) || "",
+          data: (raw.data as Record<string, unknown>) || {},
+        };
 
-      if (ev.type === "hypothesis_generated" && ev.hypothesis) {
-        setHypotheses((prev) => [...prev, ev.hypothesis as Hypothesis]);
-      }
-      if (ev.type === "pivot") {
-        setPivotCount((prev) => prev + 1);
-      }
-      if (ev.type === "status_change") {
-        setStatus(String(ev.status || ev.message || "running"));
-      }
-      if (ev.type === "session_started") {
-        setStatus("running");
-      }
-      if (ev.type === "session_complete") {
-        setStatus("complete");
-      }
-    });
+        // Skip keepalive events from timeline
+        if (ev.event_type === "keepalive") return;
+
+        setEvents((prev) => [...prev, ev]);
+        setStepCount((prev) => prev + 1);
+
+        if (ev.event_type === "session_created" || ev.event_type === "stage_start") {
+          setStatus("running");
+        }
+        if (ev.event_type === "stage_complete" && ev.data?.stage === "graph") {
+          const count = (ev.data.hypotheses as number) || 0;
+          if (count > 0) {
+            const scored = (ev.data.scored as number) || 0;
+            setHypotheses((prev) => {
+              if (prev.length < scored) {
+                const newHyps: Hypothesis[] = [];
+                for (let i = prev.length; i < scored; i++) {
+                  newHyps.push({ title: `Hypothesis ${i + 1}` });
+                }
+                return [...prev, ...newHyps];
+              }
+              return prev;
+            });
+          }
+        }
+        if (ev.event_type === "pivot") {
+          setPivotCount((prev) => prev + 1);
+        }
+        if (ev.event_type === "experiment_complete") {
+          const title = ev.data?.hypothesis_title as string;
+          const verdict = ev.data?.verdict as string;
+          if (title && verdict) {
+            setHypotheses((prev) =>
+              prev.map((h) =>
+                h.title === title ? { ...h, experiment_verdict: verdict } : h,
+              ),
+            );
+          }
+        }
+        if (ev.event_type === "pipeline_complete") {
+          setStatus("complete");
+          const hypCount = (ev.data?.hypotheses as number) || 0;
+          if (hypCount > 0) {
+            setHypotheses((prev) => {
+              if (prev.length < hypCount) {
+                const newHyps: Hypothesis[] = [];
+                for (let i = prev.length; i < hypCount; i++) {
+                  newHyps.push({ title: `Hypothesis ${i + 1}` });
+                }
+                return [...prev, ...newHyps];
+              }
+              return prev;
+            });
+          }
+        }
+        if (ev.event_type === "session_completed") {
+          setStatus("complete");
+        }
+      },
+      () => {
+        if (status !== "complete") {
+          setError("Connection to event stream lost. The session may still be running on the server.");
+        }
+      },
+    );
 
     setStatus("running");
 
     return () => {
       source.close();
     };
-  }, [id]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     eventsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events]);
-
-  function formatTime(ts?: string) {
-    if (!ts) return "";
-    try {
-      return new Date(ts).toLocaleTimeString();
-    } catch {
-      return ts;
-    }
-  }
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -96,6 +175,12 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         </Badge>
       </div>
 
+      {error && (
+        <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Event Timeline */}
         <div className="lg:col-span-2">
@@ -110,29 +195,24 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                     Waiting for events...
                   </p>
                 )}
-                {events.map((ev, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 rounded-md border border-slate-100 px-3 py-2"
-                  >
-                    <Badge variant="outline" className="shrink-0 text-xs">
-                      {ev.type}
-                    </Badge>
-                    <div className="min-w-0 flex-1">
-                      {ev.tool_name && (
-                        <span className="mr-2 font-mono text-xs text-teal-600">
-                          {ev.tool_name}
+                {events.map((ev, i) => {
+                  const message = formatEventMessage(ev);
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-start gap-3 rounded-md border border-slate-100 px-3 py-2"
+                    >
+                      <Badge variant="outline" className="shrink-0 text-xs">
+                        {ev.event_type}
+                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm text-slate-600">
+                          {message || JSON.stringify(ev.data).slice(0, 120)}
                         </span>
-                      )}
-                      <span className="text-sm text-slate-600">
-                        {ev.message || JSON.stringify(ev).slice(0, 120)}
-                      </span>
+                      </div>
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400">
-                      {formatTime(ev.timestamp)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={eventsEndRef} />
               </div>
             </CardContent>
@@ -171,6 +251,19 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                       <span className="mt-1 inline-block text-xs text-emerald-600">
                         Novelty: {(h.novelty_score * 100).toFixed(0)}%
                       </span>
+                    )}
+                    {h.experiment_verdict && (
+                      <Badge
+                        className={`mt-1 ml-2 text-xs ${
+                          h.experiment_verdict === "validated"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : h.experiment_verdict === "refuted"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {h.experiment_verdict}
+                      </Badge>
                     )}
                   </div>
                 ))}
