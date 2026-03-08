@@ -25,6 +25,7 @@ class PipelineStep(Enum):
 	VALIDATION = "validation"
 	VISUALIZATION = "visualization"
 	PROTOCOL = "protocol"
+	EXPERIMENT = "experiment"
 	COMPLETED = "completed"
 	FAILED = "failed"
 
@@ -42,6 +43,7 @@ class PipelineResult:
 	branches: list = field(default_factory=list)
 	errors: list[str] = field(default_factory=list)
 	checkpoint_log: list[dict] = field(default_factory=list)
+	experiment_results: list[dict] = field(default_factory=list)
 
 
 async def merge_triples_to_graph(triples: list[Triple]) -> int:
@@ -70,6 +72,31 @@ async def merge_triples_to_graph(triples: list[Triple]) -> int:
 		)
 		count += len(result)
 	return count
+
+
+async def _update_graph_edge_status(
+	a_name: str,
+	c_name: str,
+	status: str,
+	confidence: float,
+) -> None:
+	"""Update a hypothesized A-C edge in Neo4j with experiment results."""
+	query = """
+		MATCH (a {name: $a_name})-[r]->(c {name: $c_name})
+		WHERE r.is_novel = true
+		SET r.status = $status, r.validation_score = $confidence
+		RETURN r
+	"""
+	try:
+		await graph_client.execute_write(
+			query,
+			a_name=a_name,
+			c_name=c_name,
+			status=status,
+			confidence=confidence,
+		)
+	except Exception:
+		logger.warning("Failed to update graph edge %s -> %s", a_name, c_name)
 
 
 def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:

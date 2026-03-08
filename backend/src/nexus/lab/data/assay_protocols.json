@@ -1,0 +1,616 @@
+{
+	"MTT_viability": {
+		"name": "MTT Cell Viability Assay",
+		"description": "Colorimetric assay measuring mitochondrial reductase activity as a proxy for cell viability. MTT tetrazolium is reduced to purple formazan crystals by living cells.",
+		"assay_type": "MTT_viability",
+		"readout": {
+			"readout_type": "absorbance",
+			"wavelength_nm": 570,
+			"excitation_nm": 0,
+			"emission_nm": 0,
+			"read_time_minutes": 5,
+			"instrument": "microplate_reader"
+		},
+		"incubation_time_hours": 24,
+		"temperature_C": 37,
+		"co2_percent": 5,
+		"reagents": [
+			{
+				"name": "Thiazolyl Blue Tetrazolium Bromide (MTT)",
+				"supplier": "Sigma-Aldrich",
+				"catalog_number": "M2128",
+				"stock_preparation": "Dissolve 5 mg/mL in sterile PBS. Filter-sterilize through 0.22 um. Store at 4C protected from light. Stable for 4 weeks.",
+				"working_concentration": "0.5 mg/mL"
+			},
+			{
+				"name": "DMSO (solubilization)",
+				"supplier": "Sigma-Aldrich",
+				"catalog_number": "D2650",
+				"stock_preparation": "Use neat. Cell culture grade.",
+				"working_concentration": "neat"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Seed cells in 96-well plate",
+				"volume_uL": 100,
+				"incubation_hours": 24,
+				"notes": "Allow cells to adhere overnight"
+			},
+			{
+				"step": 2,
+				"description": "Add compound dilutions to wells",
+				"volume_uL": 10,
+				"incubation_hours": 24,
+				"notes": "Final DMSO concentration must be below 0.5%"
+			},
+			{
+				"step": 3,
+				"description": "Add MTT solution (5 mg/mL stock) to each well",
+				"volume_uL": 10,
+				"incubation_hours": 4,
+				"notes": "Do not remove existing medium. Incubate at 37C, 5% CO2"
+			},
+			{
+				"step": 4,
+				"description": "Remove medium carefully, add DMSO to dissolve formazan",
+				"volume_uL": 100,
+				"incubation_hours": 0.25,
+				"notes": "Shake plate for 15 min at room temperature to fully dissolve crystals"
+			},
+			{
+				"step": 5,
+				"description": "Read absorbance at 570 nm",
+				"volume_uL": 0,
+				"incubation_hours": 0,
+				"notes": "Reference wavelength 690 nm optional for background subtraction"
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Cells treated with 10% DMSO (cytotoxic positive control)",
+				"compound_name": "DMSO",
+				"concentration_uM": 0,
+				"expected_response": "Near-complete cell death, low absorbance"
+			},
+			{
+				"control_type": "negative",
+				"description": "Untreated cells (vehicle only, 0.1% DMSO)",
+				"compound_name": "Vehicle",
+				"concentration_uM": 0,
+				"expected_response": "Full viability, high absorbance"
+			},
+			{
+				"control_type": "blank",
+				"description": "Medium only, no cells",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "Background absorbance level"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.5,
+			"max_cv_percent": 20.0,
+			"min_signal_to_background": 3.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 52,
+		"compatible_plates": ["96-well", "384-well"]
+	},
+	"resazurin_viability": {
+		"name": "Resazurin (alamarBlue) Cell Viability Assay",
+		"description": "Fluorometric assay where resazurin (blue, non-fluorescent) is reduced to resorufin (pink, fluorescent) by viable cells. Non-destructive, allowing repeated measurements.",
+		"assay_type": "resazurin_viability",
+		"readout": {
+			"readout_type": "fluorescence",
+			"wavelength_nm": 0,
+			"excitation_nm": 560,
+			"emission_nm": 590,
+			"read_time_minutes": 5,
+			"instrument": "microplate_reader"
+		},
+		"incubation_time_hours": 24,
+		"temperature_C": 37,
+		"co2_percent": 5,
+		"reagents": [
+			{
+				"name": "alamarBlue Cell Viability Reagent",
+				"supplier": "Thermo Fisher",
+				"catalog_number": "DAL1025",
+				"stock_preparation": "Ready to use. Store at 4C protected from light.",
+				"working_concentration": "10% v/v in culture medium"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Seed cells in 96-well plate",
+				"volume_uL": 100,
+				"incubation_hours": 24,
+				"notes": "Allow cells to adhere overnight"
+			},
+			{
+				"step": 2,
+				"description": "Add compound dilutions to wells",
+				"volume_uL": 10,
+				"incubation_hours": 24,
+				"notes": "Final DMSO below 0.5%"
+			},
+			{
+				"step": 3,
+				"description": "Add alamarBlue reagent to each well",
+				"volume_uL": 10,
+				"incubation_hours": 4,
+				"notes": "Add 10% v/v of total well volume. Incubate at 37C, 5% CO2"
+			},
+			{
+				"step": 4,
+				"description": "Read fluorescence (Ex 560 / Em 590 nm)",
+				"volume_uL": 0,
+				"incubation_hours": 0,
+				"notes": "Can also read absorbance at 570/600 nm if fluorescence reader unavailable"
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Cells treated with 10% DMSO",
+				"compound_name": "DMSO",
+				"concentration_uM": 0,
+				"expected_response": "Minimal fluorescence (dead cells)"
+			},
+			{
+				"control_type": "negative",
+				"description": "Untreated cells (vehicle only)",
+				"compound_name": "Vehicle",
+				"concentration_uM": 0,
+				"expected_response": "Maximum fluorescence (full viability)"
+			},
+			{
+				"control_type": "blank",
+				"description": "Medium + alamarBlue, no cells",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "Background fluorescence"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.5,
+			"max_cv_percent": 15.0,
+			"min_signal_to_background": 5.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 52,
+		"compatible_plates": ["96-well", "384-well"]
+	},
+	"fluorescence_polarization": {
+		"name": "Fluorescence Polarization Binding Assay",
+		"description": "Measures binding of a fluorescent tracer to a protein target. Bound tracer rotates slowly (high polarization), free tracer rotates quickly (low polarization). Displacement by test compound indicates binding.",
+		"assay_type": "fluorescence_polarization",
+		"readout": {
+			"readout_type": "fluorescence",
+			"wavelength_nm": 0,
+			"excitation_nm": 485,
+			"emission_nm": 535,
+			"read_time_minutes": 10,
+			"instrument": "microplate_reader_polarization"
+		},
+		"incubation_time_hours": 1,
+		"temperature_C": 25,
+		"co2_percent": 0,
+		"reagents": [
+			{
+				"name": "FITC-labeled tracer peptide",
+				"supplier": "Custom synthesis or Thermo Fisher",
+				"catalog_number": "varies",
+				"stock_preparation": "Dissolve to 1 mM in DMSO. Aliquot and store at -80C. Working: 10 nM in assay buffer.",
+				"working_concentration": "10 nM"
+			},
+			{
+				"name": "Assay buffer (20 mM HEPES, 150 mM NaCl, 0.01% Triton X-100, pH 7.4)",
+				"supplier": "Sigma-Aldrich",
+				"catalog_number": "H3375 (HEPES), S7653 (NaCl), T8787 (Triton)",
+				"stock_preparation": "Prepare fresh. Filter through 0.22 um. Adjust pH to 7.4.",
+				"working_concentration": "1x"
+			},
+			{
+				"name": "Purified target protein",
+				"supplier": "In-house or commercial",
+				"catalog_number": "varies",
+				"stock_preparation": "Dilute to 2x final concentration in assay buffer. Use Kd concentration.",
+				"working_concentration": "At Kd (typically 10-100 nM)"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Add assay buffer to black 384-well plate",
+				"volume_uL": 10,
+				"incubation_hours": 0,
+				"notes": "Use black, low-volume, non-binding surface plates (e.g., Corning 3575)"
+			},
+			{
+				"step": 2,
+				"description": "Add compound dilutions",
+				"volume_uL": 5,
+				"incubation_hours": 0,
+				"notes": "Serial dilution in assay buffer. Final DMSO below 1%"
+			},
+			{
+				"step": 3,
+				"description": "Add purified target protein",
+				"volume_uL": 5,
+				"incubation_hours": 0.25,
+				"notes": "Mix gently. Pre-incubate compound with protein for 15 min at RT"
+			},
+			{
+				"step": 4,
+				"description": "Add FITC-labeled tracer",
+				"volume_uL": 5,
+				"incubation_hours": 1,
+				"notes": "Final tracer concentration 10 nM. Incubate 1 hr at RT in the dark"
+			},
+			{
+				"step": 5,
+				"description": "Read fluorescence polarization (Ex 485 / Em 535 nm)",
+				"volume_uL": 0,
+				"incubation_hours": 0,
+				"notes": "Read in polarization mode. Report mP values."
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Known inhibitor at saturating concentration (displaces tracer)",
+				"compound_name": "Reference inhibitor",
+				"concentration_uM": 100,
+				"expected_response": "Low polarization (free tracer only)"
+			},
+			{
+				"control_type": "negative",
+				"description": "DMSO vehicle (tracer fully bound to protein)",
+				"compound_name": "Vehicle",
+				"concentration_uM": 0,
+				"expected_response": "High polarization (tracer bound to protein)"
+			},
+			{
+				"control_type": "blank",
+				"description": "Tracer only, no protein",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "Minimum polarization baseline"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.5,
+			"max_cv_percent": 10.0,
+			"min_signal_to_background": 2.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 3,
+		"compatible_plates": ["384-well"]
+	},
+	"ELISA": {
+		"name": "Enzyme-Linked Immunosorbent Assay",
+		"description": "Quantitative immunoassay for detecting and measuring proteins, peptides, antibodies, and hormones. Uses enzyme-linked antibodies and colorimetric substrates.",
+		"assay_type": "ELISA",
+		"readout": {
+			"readout_type": "absorbance",
+			"wavelength_nm": 450,
+			"excitation_nm": 0,
+			"emission_nm": 0,
+			"read_time_minutes": 5,
+			"instrument": "microplate_reader"
+		},
+		"incubation_time_hours": 2,
+		"temperature_C": 25,
+		"co2_percent": 0,
+		"reagents": [
+			{
+				"name": "Capture antibody",
+				"supplier": "R&D Systems or Abcam",
+				"catalog_number": "varies by target",
+				"stock_preparation": "Dilute in coating buffer (0.05M carbonate/bicarbonate pH 9.6) per manufacturer instructions",
+				"working_concentration": "1-10 ug/mL"
+			},
+			{
+				"name": "TMB Substrate Solution",
+				"supplier": "Thermo Fisher",
+				"catalog_number": "34028",
+				"stock_preparation": "Ready to use. Equilibrate to room temperature before use.",
+				"working_concentration": "neat"
+			},
+			{
+				"name": "Stop Solution (2N H2SO4)",
+				"supplier": "Thermo Fisher",
+				"catalog_number": "N600",
+				"stock_preparation": "Ready to use.",
+				"working_concentration": "neat"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Coat plate with capture antibody, incubate overnight at 4C",
+				"volume_uL": 100,
+				"incubation_hours": 16,
+				"notes": "Use high-binding 96-well plate (e.g., Corning 9018)"
+			},
+			{
+				"step": 2,
+				"description": "Block with 1% BSA in PBS-T for 1 hour",
+				"volume_uL": 200,
+				"incubation_hours": 1,
+				"notes": "Wash 3x with PBS-T between steps"
+			},
+			{
+				"step": 3,
+				"description": "Add samples and standards",
+				"volume_uL": 100,
+				"incubation_hours": 2,
+				"notes": "Incubate at room temperature with gentle shaking"
+			},
+			{
+				"step": 4,
+				"description": "Add detection antibody (HRP-conjugated)",
+				"volume_uL": 100,
+				"incubation_hours": 1,
+				"notes": "Wash 3x before adding. Dilute per manufacturer specs."
+			},
+			{
+				"step": 5,
+				"description": "Add TMB substrate",
+				"volume_uL": 100,
+				"incubation_hours": 0.5,
+				"notes": "Develop in dark for 15-30 min until blue color develops"
+			},
+			{
+				"step": 6,
+				"description": "Add stop solution and read at 450 nm",
+				"volume_uL": 50,
+				"incubation_hours": 0,
+				"notes": "Read within 30 min of stopping"
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Recombinant protein standard at known concentration",
+				"compound_name": "Standard",
+				"concentration_uM": 0,
+				"expected_response": "Standard curve for quantification"
+			},
+			{
+				"control_type": "negative",
+				"description": "Sample diluent only (no analyte)",
+				"compound_name": "Blank",
+				"concentration_uM": 0,
+				"expected_response": "Background absorbance"
+			},
+			{
+				"control_type": "blank",
+				"description": "Substrate only, no antibody",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "Minimal absorbance"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.4,
+			"max_cv_percent": 15.0,
+			"min_signal_to_background": 3.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 24,
+		"compatible_plates": ["96-well"]
+	},
+	"qPCR": {
+		"name": "Quantitative Real-Time PCR",
+		"description": "Measures gene expression changes via reverse transcription and real-time PCR amplification with fluorescent reporters (SYBR Green or TaqMan probes).",
+		"assay_type": "qPCR",
+		"readout": {
+			"readout_type": "fluorescence",
+			"wavelength_nm": 0,
+			"excitation_nm": 470,
+			"emission_nm": 520,
+			"read_time_minutes": 90,
+			"instrument": "real_time_pcr"
+		},
+		"incubation_time_hours": 24,
+		"temperature_C": 37,
+		"co2_percent": 5,
+		"reagents": [
+			{
+				"name": "Power SYBR Green PCR Master Mix",
+				"supplier": "Thermo Fisher",
+				"catalog_number": "4367659",
+				"stock_preparation": "Ready to use 2x mix. Store at -20C. Thaw on ice before use.",
+				"working_concentration": "1x"
+			},
+			{
+				"name": "RNeasy Mini Kit (RNA extraction)",
+				"supplier": "Qiagen",
+				"catalog_number": "74104",
+				"stock_preparation": "Follow kit protocol for RNA isolation",
+				"working_concentration": "N/A"
+			},
+			{
+				"name": "High-Capacity cDNA Reverse Transcription Kit",
+				"supplier": "Thermo Fisher",
+				"catalog_number": "4368814",
+				"stock_preparation": "Follow kit protocol. Use 1 ug total RNA per reaction.",
+				"working_concentration": "N/A"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Treat cells with compound for specified duration",
+				"volume_uL": 0,
+				"incubation_hours": 24,
+				"notes": "Use 6-well or 12-well plates for sufficient RNA yield"
+			},
+			{
+				"step": 2,
+				"description": "Extract total RNA using RNeasy kit",
+				"volume_uL": 0,
+				"incubation_hours": 1,
+				"notes": "Include DNase treatment. Check RNA quality (260/280 > 1.8)"
+			},
+			{
+				"step": 3,
+				"description": "Reverse transcribe 1 ug RNA to cDNA",
+				"volume_uL": 20,
+				"incubation_hours": 1,
+				"notes": "25C 10 min, 37C 120 min, 85C 5 min"
+			},
+			{
+				"step": 4,
+				"description": "Set up qPCR reactions in 96-well PCR plate",
+				"volume_uL": 20,
+				"incubation_hours": 0,
+				"notes": "10 uL SYBR mix + 1 uL each primer (10 uM) + 2 uL cDNA + 6 uL water"
+			},
+			{
+				"step": 5,
+				"description": "Run qPCR program: 95C 10 min, 40 cycles (95C 15s, 60C 1 min)",
+				"volume_uL": 0,
+				"incubation_hours": 1.5,
+				"notes": "Include melt curve analysis. Use GAPDH or ACTB as housekeeping gene."
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Known inducer of target gene expression",
+				"compound_name": "Reference compound",
+				"concentration_uM": 0,
+				"expected_response": "Significant fold-change vs untreated"
+			},
+			{
+				"control_type": "negative",
+				"description": "Vehicle-treated cells",
+				"compound_name": "Vehicle",
+				"concentration_uM": 0,
+				"expected_response": "Baseline expression (Ct within normal range)"
+			},
+			{
+				"control_type": "blank",
+				"description": "No-template control (NTC)",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "No amplification or Ct > 35"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.4,
+			"max_cv_percent": 15.0,
+			"min_signal_to_background": 2.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 28,
+		"compatible_plates": ["96-well"]
+	},
+	"luciferase_reporter": {
+		"name": "Luciferase Reporter Gene Assay",
+		"description": "Measures transcriptional activity of a pathway by driving luciferase expression from a pathway-responsive promoter. Bioluminescence is proportional to pathway activation.",
+		"assay_type": "luciferase_reporter",
+		"readout": {
+			"readout_type": "luminescence",
+			"wavelength_nm": 0,
+			"excitation_nm": 0,
+			"emission_nm": 0,
+			"read_time_minutes": 10,
+			"instrument": "luminometer"
+		},
+		"incubation_time_hours": 24,
+		"temperature_C": 37,
+		"co2_percent": 5,
+		"reagents": [
+			{
+				"name": "Dual-Luciferase Reporter Assay System",
+				"supplier": "Promega",
+				"catalog_number": "E1910",
+				"stock_preparation": "Reconstitute LAR II: dissolve lyophilized substrate in LAR II buffer. Prepare Stop & Glo: add 1:50 substrate to Stop & Glo buffer.",
+				"working_concentration": "1x per kit protocol"
+			},
+			{
+				"name": "Passive Lysis Buffer (5x)",
+				"supplier": "Promega",
+				"catalog_number": "E1941",
+				"stock_preparation": "Dilute to 1x with water before use.",
+				"working_concentration": "1x"
+			}
+		],
+		"reagent_steps": [
+			{
+				"step": 1,
+				"description": "Seed reporter cells in 96-well plate",
+				"volume_uL": 100,
+				"incubation_hours": 24,
+				"notes": "Use cells stably or transiently transfected with reporter construct"
+			},
+			{
+				"step": 2,
+				"description": "Add compound dilutions",
+				"volume_uL": 10,
+				"incubation_hours": 24,
+				"notes": "Final DMSO below 0.5%. Include pathway activator as positive control."
+			},
+			{
+				"step": 3,
+				"description": "Remove medium, add 1x Passive Lysis Buffer",
+				"volume_uL": 20,
+				"incubation_hours": 0.25,
+				"notes": "Rock plate for 15 min at room temperature"
+			},
+			{
+				"step": 4,
+				"description": "Add LAR II reagent and read firefly luminescence",
+				"volume_uL": 100,
+				"incubation_hours": 0,
+				"notes": "Read immediately after addition. 10 sec integration time."
+			},
+			{
+				"step": 5,
+				"description": "Add Stop & Glo reagent and read Renilla luminescence",
+				"volume_uL": 100,
+				"incubation_hours": 0,
+				"notes": "Renilla serves as internal normalization control"
+			}
+		],
+		"controls": [
+			{
+				"control_type": "positive",
+				"description": "Known pathway activator (e.g., TNF-alpha for NF-kB, Wnt3a for Wnt)",
+				"compound_name": "Pathway activator",
+				"concentration_uM": 0,
+				"expected_response": "High firefly/Renilla ratio (pathway activated)"
+			},
+			{
+				"control_type": "negative",
+				"description": "Vehicle-treated reporter cells",
+				"compound_name": "Vehicle",
+				"concentration_uM": 0,
+				"expected_response": "Baseline firefly/Renilla ratio"
+			},
+			{
+				"control_type": "blank",
+				"description": "Lysis buffer only, no cells",
+				"compound_name": "",
+				"concentration_uM": 0,
+				"expected_response": "Background luminescence"
+			}
+		],
+		"success_criteria": {
+			"min_z_factor": 0.5,
+			"max_cv_percent": 15.0,
+			"min_signal_to_background": 5.0,
+			"significance_threshold": 0.05
+		},
+		"total_time_hours": 50,
+		"compatible_plates": ["96-well", "384-well"]
+	}
+}

@@ -50,5 +50,9 @@ mission-control.db
 mission_report.json
 MISSION_STATE.md
 
+# Claude Code worktrees and user state
+.claude/worktrees/
+.claude/projects/
+
 # Learning system archives (keep active files)
 learning/sessions/archive-*.md
