@@ -7,13 +7,9 @@ import httpx
 
 from nexus.config import settings
 from nexus.tools.schema import ToolResponse
+from nexus.tools.tamarind_client import TamarindClient
 
 logger = logging.getLogger(__name__)
-
-TAMARIND_BASE_URL = "https://app.tamarind.bio/api"
-SUBMIT_URL = f"{TAMARIND_BASE_URL}/submit-job"
-UPLOAD_URL = f"{TAMARIND_BASE_URL}/upload"
-JOBS_URL = f"{TAMARIND_BASE_URL}/jobs"
 
 RCSB_SEARCH_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
 
@@ -85,12 +81,10 @@ async def molecular_dock(compound_name: str, protein_name: str) -> ToolResponse:
 			raw_data={"compound": compound_name, "protein": protein_name, "reason": "missing_api_key"},
 		)
 
-	headers = {"x-api-key": settings.tamarind_bio_api_key}
-
 	try:
-		async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-			# Step 1: Fetch protein PDB
-			pdb_content = await _fetch_pdb_for_gene(protein_name, client)
+		async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http_client:
+			# Step 1: Fetch protein PDB from RCSB (external API)
+			pdb_content = await _fetch_pdb_for_gene(protein_name, http_client)
 			if not pdb_content:
 				return ToolResponse(
 					status="partial",
@@ -100,8 +94,8 @@ async def molecular_dock(compound_name: str, protein_name: str) -> ToolResponse:
 					raw_data={"protein": protein_name, "reason": "no_pdb_structure"},
 				)
 
-			# Step 2: Fetch drug SDF from PubChem
-			sdf_content = await _fetch_sdf_for_drug(compound_name, client)
+			# Step 2: Fetch drug SDF from PubChem (external API)
+			sdf_content = await _fetch_sdf_for_drug(compound_name, http_client)
 			if not sdf_content:
 				return ToolResponse(
 					status="partial",
@@ -111,48 +105,30 @@ async def molecular_dock(compound_name: str, protein_name: str) -> ToolResponse:
 					raw_data={"compound": compound_name, "reason": "no_sdf"},
 				)
 
-			# Step 3: Upload protein PDB to Tamarind
-			pdb_filename = f"nexus-{protein_name}.pdb".replace(" ", "_")
-			upload_resp = await client.put(
-				f"{UPLOAD_URL}/{pdb_filename}",
-				content=pdb_content.encode(),
-				headers={**headers, "Content-Type": "application/octet-stream"},
-			)
-			upload_resp.raise_for_status()
+		# Step 3-5: Upload files and submit job via TamarindClient
+		client = TamarindClient()
 
-			# Step 4: Upload ligand SDF to Tamarind
-			sdf_filename = f"nexus-{compound_name}.sdf".replace(" ", "_")
-			upload_resp = await client.put(
-				f"{UPLOAD_URL}/{sdf_filename}",
-				content=sdf_content,
-				headers={**headers, "Content-Type": "application/octet-stream"},
-			)
-			upload_resp.raise_for_status()
+		pdb_filename = f"nexus-{protein_name}.pdb".replace(" ", "_")
+		await client.upload_file(pdb_filename, pdb_content.encode())
 
-			# Step 5: Submit DiffDock job
-			ts = int(time.time())
-			job_name = f"nexus-dock-{compound_name}-{protein_name}-{ts}".replace(" ", "_")[:64]
-			payload = {
-				"jobName": job_name,
-				"type": "diffdock",
-				"settings": {
-					"proteinFile": pdb_filename,
-					"ligandFile": sdf_filename,
-					"ligandFormat": "sdf/mol2 file",
-				},
-			}
+		sdf_filename = f"nexus-{compound_name}.sdf".replace(" ", "_")
+		await client.upload_file(sdf_filename, sdf_content)
 
-			resp = await client.post(SUBMIT_URL, json=payload, headers={**headers, "Content-Type": "application/json"})
-			resp.raise_for_status()
-
-			response_text = resp.text.strip()
+		ts = int(time.time())
+		job_name = f"nexus-dock-{compound_name}-{protein_name}-{ts}".replace(" ", "_")[:64]
+		job_settings = {
+			"proteinFile": pdb_filename,
+			"ligandFile": sdf_filename,
+			"ligandFormat": "sdf/mol2 file",
+		}
+		returned_name = await client.submit_job(job_name, "diffdock", job_settings)
 
 		return ToolResponse(
 			status="partial",
 			confidence_delta=0.0,
 			evidence_type="neutral",
-			summary=f"DiffDock job submitted for {compound_name} + {protein_name}: {response_text}",
-			raw_data={"job_name": job_name, "response": response_text},
+			summary=f"DiffDock job submitted for {compound_name} + {protein_name}: {returned_name}",
+			raw_data={"job_name": returned_name},
 		)
 
 	except httpx.HTTPError as exc:

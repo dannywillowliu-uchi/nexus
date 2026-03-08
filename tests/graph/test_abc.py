@@ -240,11 +240,11 @@ async def test_find_abc_hypotheses_exclude_known():
 		# With exclude_known=True (default)
 		await find_abc_hypotheses(source_name="test", exclude_known=True)
 		query_with_exclude = mock_client.execute_read.call_args[0][0]
-		assert "NOT (a)-[]-(c)" in query_with_exclude
+		assert "NOT (a)-[:INDICATION]-(c)" in query_with_exclude
 
 		mock_client.execute_read.reset_mock()
 
 		# With exclude_known=False
 		await find_abc_hypotheses(source_name="test", exclude_known=False)
 		query_without_exclude = mock_client.execute_read.call_args[0][0]
-		assert "NOT (a)-[]-(c)" not in query_without_exclude
+		assert "NOT (a)-[:INDICATION]-(c)" not in query_without_exclude

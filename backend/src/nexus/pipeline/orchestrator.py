@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TARGET_TYPES = ["Drug", "Gene"]
 
+MAX_CONCURRENT_BRANCHES = 3
+BRANCH_TIMEOUT = 30.0
+
 
 class PipelineStep(Enum):
 	LITERATURE = "literature"
@@ -202,6 +205,33 @@ def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:
 	}
 
 
+async def _run_branch(
+	entity_name: str,
+	entity_type: str,
+	target_types: list[str],
+	triples: list[Triple],
+	max_hypotheses: int = 10,
+) -> list[dict]:
+	"""Lightweight branch: entity resolution + graph search + scoring only."""
+	candidates = await graph_client.resolve_entity_multi(entity_name, entity_type=entity_type)
+	if candidates:
+		entity_name = candidates[0].name
+		entity_type = candidates[0].type
+
+	all_hypotheses: list[ABCHypothesis] = []
+	for target in target_types:
+		hyps = await find_abc_hypotheses(
+			source_name=entity_name,
+			source_type=entity_type,
+			target_type=target,
+		)
+		all_hypotheses.extend(hyps)
+
+	scored = [score_hypothesis(h, triples) for h in all_hypotheses]
+	scored.sort(key=lambda h: h.get("overall_score", 0), reverse=True)
+	return scored[:max_hypotheses]
+
+
 async def _emit(on_event: Callable | None, event_type: str, data: dict) -> None:
 	"""Fire the on_event callback if provided."""
 	if on_event is not None:
@@ -223,7 +253,6 @@ async def run_pipeline(
 	result = PipelineResult(query=query, start_entity=source_name, start_type=start_type)
 	targets = target_types or DEFAULT_TARGET_TYPES
 	pivot_count = 0
-	branch_futures: list[asyncio.Task] = []
 
 	tracer = get_tracer()
 
@@ -300,19 +329,38 @@ async def run_pipeline(
 			})
 			await _emit(on_event, "pivot", {"entity": source_name, "reason": lit_cp.reason})
 
-		elif lit_cp.decision == CheckpointDecision.BRANCH and lit_cp.pivot_entity:
-			branch_task = asyncio.create_task(run_pipeline(
-				query=query,
-				start_entity=lit_cp.pivot_entity,
-				start_type=lit_cp.pivot_entity_type or start_type,
-				target_types=targets,
-				max_hypotheses=max_hypotheses,
-				max_papers=max_papers,
-				max_pivots=0,
-				on_event=on_event,
-			))
-			branch_futures.append(branch_task)
-			await _emit(on_event, "branch", {"entity": lit_cp.pivot_entity, "reason": lit_cp.reason})
+		elif lit_cp.decision == CheckpointDecision.BRANCH:
+			branch_entities_raw = lit_cp.branch_entities or []
+			if not branch_entities_raw and lit_cp.pivot_entity:
+				branch_entities_raw = [{"name": lit_cp.pivot_entity, "type": lit_cp.pivot_entity_type or start_type}]
+			branch_entities_raw = branch_entities_raw[:MAX_CONCURRENT_BRANCHES]
+
+			sem = asyncio.Semaphore(MAX_CONCURRENT_BRANCHES)
+			triples_for_branches = lit_result.triples if lit_result else []
+
+			async def bounded_branch(ent: dict) -> list[dict]:
+				async with sem:
+					return await asyncio.wait_for(
+						_run_branch(
+							ent["name"], ent.get("type", start_type),
+							targets, triples_for_branches,
+						),
+						timeout=BRANCH_TIMEOUT,
+					)
+
+			branch_tasks = [asyncio.create_task(bounded_branch(e)) for e in branch_entities_raw]
+			for task in asyncio.as_completed(branch_tasks):
+				try:
+					branch_scored = await task
+					result.branches.append(branch_scored)
+					result.scored_hypotheses.extend(branch_scored)
+				except (TimeoutError, Exception) as exc:
+					result.errors.append(f"Branch failed: {exc}")
+
+			await _emit(on_event, "branch", {
+				"entities": [e["name"] for e in branch_entities_raw],
+				"reason": lit_cp.reason,
+			})
 
 		# --- Entity resolution ---
 		candidates = await graph_client.resolve_entity_multi(source_name, entity_type=start_type)
@@ -438,15 +486,6 @@ async def run_pipeline(
 				result.hypotheses.extend(hyps)
 				pivot_scored = [score_hypothesis(h, pivot_lit.triples) for h in hyps]
 				result.scored_hypotheses.extend(pivot_scored)
-
-		# --- Await branches and merge ---
-		for future in branch_futures:
-			try:
-				branch_result = await future
-				result.branches.append(branch_result)
-				result.scored_hypotheses.extend(branch_result.scored_hypotheses)
-			except Exception as exc:
-				result.errors.append(f"Branch failed: {exc}")
 
 		# --- Sort and trim ---
 		result.scored_hypotheses.sort(key=lambda h: h.get("overall_score", 0), reverse=True)

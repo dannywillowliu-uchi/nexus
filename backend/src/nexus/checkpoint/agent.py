@@ -152,6 +152,7 @@ async def run_checkpoint(ctx: CheckpointContext) -> CheckpointResult:
 			pivot_entity=data.get("pivot_entity"),
 			pivot_entity_type=data.get("pivot_entity_type"),
 			confidence=float(data.get("confidence", 0.0)),
+			branch_entities=data.get("branch_entities"),
 		)
 
 	except Exception:

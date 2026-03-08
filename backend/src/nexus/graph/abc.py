@@ -4,6 +4,7 @@ Given a source entity A, finds intermediate entities B and target entities C
 where A-B and B-C relationships exist but no direct A-C connection is known.
 """
 
+import asyncio
 import math
 from dataclasses import dataclass, field
 
@@ -80,6 +81,14 @@ INTERMEDIARY_MULTIPLIERS: dict[str, float] = {
 
 HUB_DEGREE_THRESHOLD = 200
 
+INTERMEDIARY_TIERS: list[list[str]] = [
+	["Gene"],
+	["Pathway", "BiologicalProcess"],
+	["Anatomy", "Phenotype", "MolecularFunction", "CellularComponent"],
+]
+
+QUERY_TIMEOUT = 10.0  # seconds per intermediary query
+
 
 def rel_weight(rel_type: str) -> float:
 	"""Return the weight for a relationship type, defaulting to 0.5 for unknown types."""
@@ -105,19 +114,19 @@ def compute_novelty(path_count: int, b_degree: int = 0) -> float:
 	return score
 
 
-async def find_abc_hypotheses(
+async def _query_intermediary_type(
+	intermediary_type: str,
 	source_name: str,
-	source_type: str = "Disease",
-	target_type: str = "Drug",
-	max_results: int = 20,
-	exclude_known: bool = True,
-	fuzzy: bool = False,
-	preferred_ab_rels: list[str] | None = None,
-) -> list[ABCHypothesis]:
-	"""Find ABC hypotheses via two-hop PrimeKG traversal through Gene intermediaries.
+	source_type: str,
+	target_type: str,
+	max_results: int,
+	exclude_known: bool,
+	fuzzy: bool,
+	preferred_ab_rels: list[str] | None,
+) -> list[dict]:
+	"""Run a single ABC Cypher query for a specific intermediary type label.
 
-	Core drug repurposing query: Drug-[TARGET|CARRIER|ENZYME|TRANSPORTER]-Gene-[ASSOCIATED_WITH|LITERATURE_ASSOCIATION]-Disease.
-	Always excludes known INDICATION edges when exclude_known=True.
+	Returns raw Neo4j records (list of dicts).
 	"""
 	exclude_clause = ""
 	if exclude_known:
@@ -133,7 +142,7 @@ async def find_abc_hypotheses(
 		ab_rel_clause = "AND type(r1) IN $preferred_ab_rels"
 
 	query = f"""
-		MATCH (a:{source_type})-[r1]-(b:Gene)-[r2]-(c:{target_type})
+		MATCH (a:{source_type})-[r1]-(b:{intermediary_type})-[r2]-(c:{target_type})
 		{source_filter}
 		AND a <> c AND b <> c AND b <> a
 		{ab_rel_clause}
@@ -185,10 +194,69 @@ async def find_abc_hypotheses(
 	if preferred_ab_rels:
 		params["preferred_ab_rels"] = preferred_ab_rels
 
-	records = await graph_client.execute_read(query, **params)
+	return await graph_client.execute_read(query, **params)
+
+
+def _merge_records(existing: dict[tuple[str, str], dict], new_records: list[dict]) -> None:
+	"""Merge new records into the existing map, keyed by (a_id, c_id).
+
+	When a duplicate key is found, keep the record with more intermediaries.
+	"""
+	for row in new_records:
+		key = (row["a_id"], row["c_id"])
+		if key not in existing or len(row.get("intermediaries", [])) > len(existing[key].get("intermediaries", [])):
+			existing[key] = row
+
+
+async def find_abc_hypotheses(
+	source_name: str,
+	source_type: str = "Disease",
+	target_type: str = "Drug",
+	max_results: int = 20,
+	exclude_known: bool = True,
+	fuzzy: bool = False,
+	preferred_ab_rels: list[str] | None = None,
+	min_results: int = 10,
+) -> list[ABCHypothesis]:
+	"""Find ABC hypotheses via two-hop PrimeKG traversal through tiered intermediary types.
+
+	Queries intermediary types in priority tiers (Gene first, then Pathway/BiologicalProcess,
+	then Anatomy/Phenotype/etc). If a tier yields >= min_results, lower tiers are skipped.
+	"""
+	merged: dict[tuple[str, str], dict] = {}
+
+	for tier in INTERMEDIARY_TIERS:
+		coros = [
+			asyncio.wait_for(
+				_query_intermediary_type(
+					intermediary_type=itype,
+					source_name=source_name,
+					source_type=source_type,
+					target_type=target_type,
+					max_results=max_results,
+					exclude_known=exclude_known,
+					fuzzy=fuzzy,
+					preferred_ab_rels=preferred_ab_rels,
+				),
+				timeout=QUERY_TIMEOUT,
+			)
+			for itype in tier
+		]
+		tier_results = await asyncio.gather(*coros, return_exceptions=True)
+
+		for result in tier_results:
+			if isinstance(result, BaseException):
+				continue
+			_merge_records(merged, result)
+
+		if len(merged) >= min_results:
+			break
+
+	# Sort by path_count descending and limit to max_results
+	sorted_records = sorted(merged.values(), key=lambda r: r["path_count"], reverse=True)[:max_results]
 
 	hypotheses: list[ABCHypothesis] = []
-	for row in records:
+	for row in sorted_records:
 		intermediaries = row["intermediaries"]
 		path_count = row["path_count"]
 		novelty = compute_novelty(path_count)

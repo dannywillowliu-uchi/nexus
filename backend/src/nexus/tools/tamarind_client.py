@@ -163,6 +163,17 @@ class TamarindClient:
 			data = resp.json()
 			return data.get("fileUrl", data.get("signedUrl", ""))
 
+	async def list_job_types(self) -> list[str]:
+		"""Fetch available job types from the Tamarind Bio API."""
+		async with httpx.AsyncClient(timeout=30.0) as client:
+			resp = await client.get(
+				f"{self._base_url}/job-types",
+				headers=self._headers,
+			)
+			resp.raise_for_status()
+			data = resp.json()
+			return data.get("jobTypes", [])
+
 	async def run_job(self, job_name: str, job_type: str, settings: dict, timeout: float = DEFAULT_TIMEOUT) -> dict:
 		"""Convenience: submit, poll, and return results in one call."""
 		await self.submit_job(job_name, job_type, settings)
