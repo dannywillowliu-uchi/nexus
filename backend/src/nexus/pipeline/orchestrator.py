@@ -8,10 +8,12 @@ from typing import Callable
 
 from nexus.agents.literature.agent import LiteratureResult, run_literature_agent
 from nexus.agents.literature.extract import Triple
+from nexus.agents.reasoning_agent import generate_quick_summaries, generate_research_brief
 from nexus.checkpoint.agent import run_checkpoint
 from nexus.checkpoint.models import CheckpointContext, CheckpointDecision
 from nexus.graph.abc import ABCHypothesis, find_abc_hypotheses
 from nexus.graph.client import graph_client
+from nexus.tools.molecular_dock import molecular_dock
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,8 @@ class PipelineResult:
 	literature_result: LiteratureResult | None = None
 	hypotheses: list[ABCHypothesis] = field(default_factory=list)
 	scored_hypotheses: list[dict] = field(default_factory=list)
+	research_briefs: list[dict] = field(default_factory=list)
+	validation_results: list[dict] = field(default_factory=list)
 	pivots: list[dict] = field(default_factory=list)
 	branches: list = field(default_factory=list)
 	errors: list[str] = field(default_factory=list)
@@ -327,9 +331,98 @@ async def run_pipeline(
 		result.scored_hypotheses.sort(key=lambda h: h.get("overall_score", 0), reverse=True)
 		result.scored_hypotheses = result.scored_hypotheses[:max_hypotheses]
 
+		# --- Reasoning stage: generate research briefs for top hypotheses ---
+		result.step = PipelineStep.REASONING
+		await _emit(on_event, "stage_start", {"stage": "reasoning", "count": len(result.scored_hypotheses)})
+
+		# Map scored hypotheses back to ABCHypothesis objects for the reasoning agent
+		top_abc = result.hypotheses[:max_hypotheses]
+		triples_for_reasoning = lit_result.triples if lit_result else []
+
+		# Quick summaries for all top hypotheses
+		summaries = await generate_quick_summaries(top_abc, triples_for_reasoning)
+		for i, sh in enumerate(result.scored_hypotheses):
+			if i < len(summaries):
+				sh["summary"] = summaries[i]
+
+		# Detailed research briefs for the top 3
+		papers_dicts = []
+		if lit_result:
+			papers_dicts = [
+				{"paper_id": p.paper_id, "title": p.title, "abstract": p.abstract}
+				for p in lit_result.papers
+			]
+
+		for i, abc_hyp in enumerate(top_abc[:3]):
+			try:
+				brief = await generate_research_brief(abc_hyp, triples_for_reasoning, papers_dicts)
+				brief_dict = {
+					"hypothesis_title": brief.hypothesis_title,
+					"connection_explanation": brief.connection_explanation,
+					"literature_evidence": [
+						{"paper_id": e.paper_id, "title": e.title, "snippet": e.snippet, "confidence": e.confidence}
+						for e in brief.literature_evidence
+					],
+					"existing_knowledge_comparison": brief.existing_knowledge_comparison,
+					"confidence": {
+						"graph_evidence": brief.confidence.graph_evidence,
+						"literature_support": brief.confidence.literature_support,
+						"biological_plausibility": brief.confidence.biological_plausibility,
+						"novelty": brief.confidence.novelty,
+					},
+					"suggested_validation": brief.suggested_validation,
+				}
+				result.research_briefs.append(brief_dict)
+				if i < len(result.scored_hypotheses):
+					result.scored_hypotheses[i]["research_brief"] = brief_dict
+			except Exception as exc:
+				logger.warning("Research brief generation failed for hypothesis %d: %s", i, exc)
+
+		await _emit(on_event, "stage_complete", {
+			"stage": "reasoning",
+			"summaries": len(summaries),
+			"briefs": len(result.research_briefs),
+		})
+
+		# --- Validation stage: molecular docking for drug-gene hypotheses ---
+		result.step = PipelineStep.VALIDATION
+		await _emit(on_event, "stage_start", {"stage": "validation"})
+
+		for sh in result.scored_hypotheses[:3]:
+			abc_path = sh.get("abc_path", {})
+			a_type = abc_path.get("a", {}).get("type", "")
+			b_type = abc_path.get("b", {}).get("type", "")
+			a_name = abc_path.get("a", {}).get("name", "")
+			b_name = abc_path.get("b", {}).get("name", "")
+
+			# Only dock Drug-Gene pairs
+			if a_type == "Drug" and b_type == "Gene":
+				try:
+					dock_result = await molecular_dock(a_name, b_name)
+					validation_entry = {
+						"tool": "molecular_dock",
+						"compound": a_name,
+						"protein": b_name,
+						"status": dock_result.status,
+						"confidence_delta": dock_result.confidence_delta,
+						"evidence_type": dock_result.evidence_type,
+						"summary": dock_result.summary,
+					}
+					result.validation_results.append(validation_entry)
+					sh["validation"] = validation_entry
+				except Exception as exc:
+					logger.warning("Molecular docking failed for %s + %s: %s", a_name, b_name, exc)
+
+		await _emit(on_event, "stage_complete", {
+			"stage": "validation",
+			"docking_results": len(result.validation_results),
+		})
+
 		result.step = PipelineStep.COMPLETED
 		await _emit(on_event, "pipeline_complete", {
 			"hypotheses": len(result.scored_hypotheses),
+			"briefs": len(result.research_briefs),
+			"validations": len(result.validation_results),
 			"pivots": len(result.pivots),
 			"branches": len(result.branches),
 		})
