@@ -67,6 +67,25 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"DRUG_EFFECT": 0.6,
 }
 
+RELATIONSHIP_ALIASES: dict[str, str] = {
+	"TREATS_CtD": "INDICATION",
+	"PALLIATES_CpD": "INDICATION",
+	"BINDS_CbG": "TARGET",
+	"ASSOCIATES_DaG": "ASSOCIATED_WITH",
+	"DOWNREGULATES_CdG": "TARGET",
+	"UPREGULATES_CuG": "TARGET",
+	"RESEMBLES_DrD": "ASSOCIATED_WITH",
+	"INCLUDES_PCiC": "CELLCOMP_PROTEIN",
+	"PARTICIPATES_GpPW": "PATHWAY_PROTEIN",
+	"PARTICIPATES_GpBP": "BIOPROCESS_PROTEIN",
+	"PARTICIPATES_GpMF": "MOLFUNC_PROTEIN",
+	"LOCALIZES_DlA": "ANATOMY_PROTEIN_PRESENT",
+	"PRESENTS_DpS": "PHENOTYPE_PRESENT",
+	"INTERACTS_GiG": "PROTEIN_PROTEIN",
+	"COVARIES_GcG": "PROTEIN_PROTEIN",
+	"ASSOCIATES_GaD": "ASSOCIATED_WITH",
+}
+
 # Intermediary type multipliers -- Gene intermediaries are most valuable
 # for drug repurposing hypotheses
 INTERMEDIARY_MULTIPLIERS: dict[str, float] = {
@@ -91,8 +110,9 @@ QUERY_TIMEOUT = 10.0  # seconds per intermediary query
 
 
 def rel_weight(rel_type: str) -> float:
-	"""Return the weight for a relationship type, defaulting to 0.5 for unknown types."""
-	return RELATIONSHIP_WEIGHTS.get(rel_type, 0.5)
+	"""Return the weight for a relationship type, checking aliases for old Hetionet labels."""
+	canonical = RELATIONSHIP_ALIASES.get(rel_type, rel_type)
+	return RELATIONSHIP_WEIGHTS.get(canonical, 0.5)
 
 
 def compute_novelty(path_count: int, b_degree: int = 0) -> float:

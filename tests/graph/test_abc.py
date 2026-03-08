@@ -86,12 +86,22 @@ def test_compute_novelty():
 
 
 def test_rel_weight_known():
-	"""Known relationship types should return their assigned weights."""
+	"""Known PrimeKG relationship types should return their assigned weights."""
+	assert rel_weight("INDICATION") == 1.0
+	assert rel_weight("TARGET") == 1.0
+	assert rel_weight("ASSOCIATED_WITH") == 0.85
+	assert rel_weight("PROTEIN_PROTEIN") == 0.8
+	assert rel_weight("BIOPROCESS_PROTEIN") == 0.7
+
+
+def test_rel_weight_aliases():
+	"""Old Hetionet labels should resolve via alias map."""
 	assert rel_weight("TREATS_CtD") == 1.0
-	assert rel_weight("BINDS_CbG") == 0.9
+	assert rel_weight("BINDS_CbG") == 1.0
 	assert rel_weight("ASSOCIATES_DaG") == 0.85
 	assert rel_weight("INTERACTS_GiG") == 0.8
-	assert rel_weight("PARTICIPATES_GpBP") == 0.8
+	assert rel_weight("DOWNREGULATES_CdG") == 1.0
+	assert rel_weight("PARTICIPATES_GpBP") == 0.7
 
 
 def test_rel_weight_unknown():
@@ -116,15 +126,15 @@ def _make_mock_records(source_type="Disease", target_type="Compound"):
 					"b_id": "GENE:5678",
 					"b_name": "TNF",
 					"b_type": "Gene",
-					"ab_rel": "ASSOCIATES_DaG",
-					"bc_rel": "BINDS_CbG",
+					"ab_rel": "ASSOCIATED_WITH",
+					"bc_rel": "TARGET",
 				},
 				{
 					"b_id": "GENE:9999",
 					"b_name": "IL6",
 					"b_type": "Gene",
-					"ab_rel": "ASSOCIATES_DaG",
-					"bc_rel": "DOWNREGULATES_CdG",
+					"ab_rel": "ASSOCIATED_WITH",
+					"bc_rel": "TARGET",
 				},
 			],
 			"path_count": 2,
@@ -141,8 +151,8 @@ def _make_mock_records(source_type="Disease", target_type="Compound"):
 					"b_id": "GENE:1111",
 					"b_name": "CD20",
 					"b_type": "Gene",
-					"ab_rel": "ASSOCIATES_DaG",
-					"bc_rel": "TREATS_CtD",
+					"ab_rel": "ASSOCIATED_WITH",
+					"bc_rel": "INDICATION",
 				},
 			],
 			"path_count": 1,
@@ -177,10 +187,9 @@ async def test_find_abc_hypotheses_disease_to_compound():
 	assert h0.novelty_score == 0.9
 	assert len(h0.intermediaries) == 2
 	# Best intermediary should be the one with highest path_strength
-	# ASSOCIATES_DaG(0.85) * BINDS_CbG(0.9) -> sqrt(0.765) ~ 0.875
-	# ASSOCIATES_DaG(0.85) * DOWNREGULATES_CdG(0.7) -> sqrt(0.595) ~ 0.771
+	# ASSOCIATED_WITH(0.85) * TARGET(1.0) -> sqrt(0.85) * Gene_multiplier(1.5) ~ 1.383
 	assert h0.b_name == "TNF"
-	assert h0.path_strength > 0.87
+	assert h0.path_strength > 1.3
 
 	# Second result: Rituximab
 	h1 = results[1]
@@ -204,8 +213,8 @@ async def test_find_abc_hypotheses_gene_source():
 					"b_id": "DOID:4567",
 					"b_name": "rheumatoid arthritis",
 					"b_type": "Disease",
-					"ab_rel": "ASSOCIATES_GaD",
-					"bc_rel": "TREATS_CtD",
+					"ab_rel": "ASSOCIATED_WITH",
+					"bc_rel": "INDICATION",
 				},
 			],
 			"path_count": 1,
