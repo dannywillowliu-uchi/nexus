@@ -37,6 +37,7 @@ Neo4j-*.txt
 
 # Data
 data/hetionet/
+data/primekg/
 
 # Testing
 .pytest_cache/

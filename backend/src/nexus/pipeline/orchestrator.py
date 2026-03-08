@@ -15,7 +15,7 @@ from nexus.graph.client import graph_client
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TARGET_TYPES = ["Compound", "Gene"]
+DEFAULT_TARGET_TYPES = ["Drug", "Gene"]
 
 
 class PipelineStep(Enum):
@@ -44,31 +44,56 @@ class PipelineResult:
 	checkpoint_log: list[dict] = field(default_factory=list)
 
 
+LABEL_MAP: dict[str, str] = {
+	"gene": "Gene", "protein": "Gene", "gene/protein": "Gene",
+	"drug": "Drug", "compound": "Drug",
+	"disease": "Disease",
+	"biological_process": "BiologicalProcess", "biologicalprocess": "BiologicalProcess",
+	"molecular_function": "MolecularFunction", "molecularfunction": "MolecularFunction",
+	"cellular_component": "CellularComponent", "cellularcomponent": "CellularComponent",
+	"pathway": "Pathway",
+	"anatomy": "Anatomy",
+	"phenotype": "Phenotype", "effect/phenotype": "Phenotype",
+	"exposure": "Exposure",
+}
+
+
+def _resolve_label(entity_type: str) -> str:
+	"""Map extracted entity type to a PrimeKG node label."""
+	return LABEL_MAP.get(entity_type.lower(), "Gene")
+
+
 async def merge_triples_to_graph(triples: list[Triple]) -> int:
-	"""Merge extracted triples into Neo4j as new edges."""
+	"""Merge extracted triples into Neo4j as LITERATURE_ASSOCIATION edges."""
 	count = 0
 	for triple in triples:
-		query = """
-			MERGE (s {name: $subject})
-			ON CREATE SET s:Entity, s.type = $subject_type
-			MERGE (o {name: $object})
-			ON CREATE SET o:Entity, o.type = $object_type
-			MERGE (s)-[r:LITERATURE_EDGE {predicate: $predicate}]->(o)
-			ON CREATE SET r.source = "literature", r.is_novel = true,
-				r.confidence = $confidence, r.source_paper_id = $source_paper_id
-			RETURN r
-		"""
-		result = await graph_client.execute_write(
-			query,
-			subject=triple.subject,
-			subject_type=triple.subject_type,
-			object=triple.object,
-			object_type=triple.object_type,
-			predicate=triple.predicate,
-			confidence=triple.confidence,
-			source_paper_id=triple.source_paper_id,
+		s_label = _resolve_label(triple.subject_type)
+		o_label = _resolve_label(triple.object_type)
+		query = (
+			f"MERGE (s:{s_label} {{name: $subject}}) "
+			f"ON CREATE SET s.node_type = $subject_type, s.source = 'literature_extraction' "
+			f"MERGE (o:{o_label} {{name: $object}}) "
+			f"ON CREATE SET o.node_type = $object_type, o.source = 'literature_extraction' "
+			f"MERGE (s)-[r:LITERATURE_ASSOCIATION]->(o) "
+			f"SET r.source = 'literature', r.is_novel = true, "
+			f"r.predicate = $predicate, r.confidence = $confidence, "
+			f"r.source_papers = [$source_paper_id] "
+			f"RETURN r"
 		)
-		count += len(result)
+		try:
+			result = await graph_client.execute_write(
+				query,
+				subject=triple.subject,
+				subject_type=triple.subject_type,
+				object=triple.object,
+				object_type=triple.object_type,
+				predicate=triple.predicate,
+				confidence=triple.confidence,
+				source_paper_id=triple.source_paper_id,
+			)
+			count += len(result)
+		except Exception:
+			logger.warning("Failed to merge triple: %s -> %s", triple.subject, triple.object)
 	return count
 
 
@@ -87,13 +112,13 @@ def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:
 	c_type = abc.c_type.lower()
 	type_pair = frozenset({a_type, c_type})
 
-	if type_pair == frozenset({"disease", "compound"}):
+	if type_pair == frozenset({"disease", "drug"}):
 		hypothesis_type = "drug_repurposing"
 	elif type_pair == frozenset({"disease"}) or (a_type == "disease" and c_type == "disease"):
 		hypothesis_type = "comorbidity"
 	elif c_type in ("biologicalprocess", "pathway", "molecularfunction"):
 		hypothesis_type = "mechanism"
-	elif type_pair == frozenset({"compound"}):
+	elif type_pair == frozenset({"drug"}):
 		hypothesis_type = "drug_interaction"
 	elif c_type in ("gene", "protein"):
 		hypothesis_type = "target_discovery"

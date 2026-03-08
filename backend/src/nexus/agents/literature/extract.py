@@ -25,13 +25,17 @@ class Triple:
 
 EXTRACTION_PROMPT = """Extract biological entity-relationship triples from these paper abstracts.
 
-For each triple, identify:
-- subject: the source entity (e.g., gene, protein, disease, drug)
-- subject_type: the type of the subject (e.g., Gene, Protein, Disease, Drug, Pathway)
-- predicate: the relationship (e.g., "inhibits", "causes", "treats", "upregulates")
-- object: the target entity
-- object_type: the type of the object
-- confidence: your confidence in the extraction (0.0 to 1.0)
+Entity types: Disease, Gene, Drug, Anatomy, BiologicalProcess, CellularComponent, MolecularFunction, Pathway, Phenotype, Exposure
+
+Predicate vocabulary: treats, binds, upregulates, downregulates, inhibits, activates, associated_with, expressed_in, participates_in, causes, negated
+
+For each triple, provide:
+- subject: entity name (use standard biomedical nomenclature, e.g. HGNC symbols for genes)
+- subject_type: one of the entity types above
+- predicate: one of the predicates above
+- object: entity name
+- object_type: one of the entity types above
+- confidence: 0.0-1.0 based on how explicitly the paper states this relationship
 - source_paper_id: the paper_id this triple was extracted from
 
 Papers:
@@ -43,7 +47,7 @@ Return a JSON array of triples. Example:
     "subject": "BRCA1",
     "subject_type": "Gene",
     "predicate": "associated_with",
-    "object": "Breast Cancer",
+    "object": "breast cancer",
     "object_type": "Disease",
     "confidence": 0.95,
     "source_paper_id": "12345"
@@ -87,7 +91,7 @@ async def extract_triples(papers: list[Paper]) -> list[Triple]:
 	try:
 		client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 		message = await client.messages.create(
-			model="claude-sonnet-4-20250514",
+			model="claude-haiku-4-5-20251001",
 			max_tokens=4096,
 			messages=[{"role": "user", "content": prompt}],
 		)
