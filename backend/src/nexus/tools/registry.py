@@ -13,6 +13,7 @@ from nexus.tools.pathway_overlap import pathway_overlap
 from nexus.tools.predict_properties import predict_properties
 from nexus.tools.predict_structure import predict_structure
 from nexus.tools.protein_interaction import protein_interaction
+from nexus.tools.validation_planner import run_validation_plan
 
 TOOL_REGISTRY: dict[str, Callable] = {
 	"literature_validate": literature_validate,
@@ -26,4 +27,5 @@ TOOL_REGISTRY: dict[str, Callable] = {
 	"dock_compound": dock_compound,
 	"predict_properties": predict_properties,
 	"batch_screen": batch_screen,
+	"run_validation_plan": run_validation_plan,
 }
