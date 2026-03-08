@@ -8,7 +8,7 @@ from nexus.config import settings
 from nexus.tools.schema import ToolResponse
 
 
-TAMARIND_BASE_URL = "https://api.tamarind.com/v1"
+TAMARIND_BASE_URL = "https://app.tamarind.bio/api"
 POLL_INTERVAL = 5.0
 MAX_POLL_ATTEMPTS = 10
 

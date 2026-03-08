@@ -4,7 +4,7 @@
 See `tamarind-api-openapi.yaml` in the project root for complete specification.
 
 ## Base URL
-`https://api.tamarind.com/v1`
+`https://app.tamarind.bio/api`
 
 ## Authentication
 API key via header: `x-api-key: YOUR_API_KEY`
@@ -87,5 +87,5 @@ Upload files (PDB, sequences, etc.) for use in jobs.
 https://app.tamarind.bio/sign-up
 
 ## Source
+- https://app.tamarind.bio/api-docs
 - https://www.tamarind.bio/pricing
-- OpenAPI spec: tamarind-api-openapi.yaml (project root)
