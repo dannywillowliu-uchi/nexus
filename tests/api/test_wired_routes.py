@@ -18,7 +18,7 @@ async def client():
 
 
 async def test_graph_explore_no_connection(client):
-	"""GET /api/graph/explore returns empty with error when graph not connected."""
+	"""GET /api/graph/explore returns empty results when graph not connected."""
 	resp = await client.get("/api/graph/explore", params={"entity_name": "Alzheimer", "entity_type": "Disease"})
 	assert resp.status_code == 200
 	data = resp.json()
@@ -26,26 +26,24 @@ async def test_graph_explore_no_connection(client):
 	assert data["entity_type"] == "Disease"
 	assert data["nodes"] == []
 	assert data["edges"] == []
-	assert "error" in data
 
 
 async def test_quick_query_placeholder(client):
-	"""POST /api/query returns results structure."""
-	with patch("nexus.api.routes.query.search_papers", new_callable=AsyncMock) as mock_search:
-		mock_search.side_effect = RuntimeError("No API key configured")
+	"""POST /api/query returns scored hypotheses structure."""
+	with patch("nexus.api.routes.query.find_abc_hypotheses", new_callable=AsyncMock) as mock_abc:
+		mock_abc.return_value = []
 		resp = await client.post("/api/query", json={
-			"query": "BRCA1 inhibitors",
-			"disease_area": "oncology",
-			"target_type": "Compound",
+			"source_name": "BRCA1",
+			"source_type": "Gene",
+			"target_type": "Disease",
 		})
 		assert resp.status_code == 200
 		data = resp.json()
-		assert data["query"] == "BRCA1 inhibitors"
-		assert data["disease_area"] == "oncology"
-		assert data["target_type"] == "Compound"
-		assert data["status"] == "error"
-		assert data["results"] == []
-		assert "error" in data
+		assert data["source"] == "BRCA1"
+		assert data["source_type"] == "Gene"
+		assert data["target_type"] == "Disease"
+		assert data["count"] == 0
+		assert data["hypotheses"] == []
 
 
 async def test_session_report_not_found(client):
