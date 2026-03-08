@@ -13,7 +13,7 @@ from nexus.checkpoint.agent import run_checkpoint
 from nexus.checkpoint.models import CheckpointContext, CheckpointDecision
 from nexus.graph.abc import ABCHypothesis, find_abc_hypotheses
 from nexus.graph.client import graph_client
-from nexus.tools.molecular_dock import molecular_dock
+from nexus.tools.validation_planner import run_validation_plan
 from nexus.tracing.tracer import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -544,38 +544,37 @@ async def run_pipeline(
 			"briefs": len(result.research_briefs),
 		})
 
-		# --- Validation stage: molecular docking for drug-gene hypotheses ---
+		# --- Validation stage: run hypothesis-aware validation ---
 		result.step = PipelineStep.VALIDATION
 		await _emit(on_event, "stage_start", {"stage": "validation"})
 
+		validation_tasks = []
 		for sh in result.scored_hypotheses[:3]:
-			abc_path = sh.get("abc_path", {})
-			a_type = abc_path.get("a", {}).get("type", "")
-			b_type = abc_path.get("b", {}).get("type", "")
-			a_name = abc_path.get("a", {}).get("name", "")
-			b_name = abc_path.get("b", {}).get("name", "")
+			validation_tasks.append(run_validation_plan(sh))
 
-			# Only dock Drug-Gene pairs
-			if a_type == "Drug" and b_type == "Gene":
-				try:
-					dock_result = await molecular_dock(a_name, b_name)
-					validation_entry = {
-						"tool": "molecular_dock",
-						"compound": a_name,
-						"protein": b_name,
-						"status": dock_result.status,
-						"confidence_delta": dock_result.confidence_delta,
-						"evidence_type": dock_result.evidence_type,
-						"summary": dock_result.summary,
+		if validation_tasks:
+			all_validation_results = await asyncio.gather(*validation_tasks, return_exceptions=True)
+			for i, val_results in enumerate(all_validation_results):
+				if isinstance(val_results, Exception):
+					result.errors.append(f"Validation failed for hypothesis {i}: {val_results}")
+					continue
+				for vr in val_results:
+					entry = {
+						"tool": vr.raw_data.get("tool_type", "unknown"),
+						"status": vr.status,
+						"confidence_delta": vr.confidence_delta,
+						"evidence_type": vr.evidence_type,
+						"summary": vr.summary,
 					}
-					result.validation_results.append(validation_entry)
-					sh["validation"] = validation_entry
-				except Exception as exc:
-					logger.warning("Molecular docking failed for %s + %s: %s", a_name, b_name, exc)
+					result.validation_results.append(entry)
+					if i < len(result.scored_hypotheses):
+						if "validations" not in result.scored_hypotheses[i]:
+							result.scored_hypotheses[i]["validations"] = []
+						result.scored_hypotheses[i]["validations"].append(entry)
 
 		await _emit(on_event, "stage_complete", {
 			"stage": "validation",
-			"docking_results": len(result.validation_results),
+			"validation_results": len(result.validation_results),
 		})
 
 		result.step = PipelineStep.COMPLETED
