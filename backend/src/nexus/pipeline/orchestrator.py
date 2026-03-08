@@ -12,6 +12,7 @@ from nexus.checkpoint.agent import run_checkpoint
 from nexus.checkpoint.models import CheckpointContext, CheckpointDecision
 from nexus.graph.abc import ABCHypothesis, find_abc_hypotheses
 from nexus.graph.client import graph_client
+from nexus.tracing.tracer import get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -144,17 +145,33 @@ async def run_pipeline(
 	pivot_count = 0
 	branch_futures: list[asyncio.Task] = []
 
+	tracer = get_tracer()
+
 	try:
 		# --- Literature stage ---
 		result.step = PipelineStep.LITERATURE
 		await _emit(on_event, "stage_start", {"stage": "literature", "entity": source_name})
 
-		lit_result = await run_literature_agent(query, max_papers=max_papers)
+		if tracer:
+			with tracer.span("literature_agent", input_data={"query": query, "max_papers": max_papers}) as lit_span:
+				lit_result = await run_literature_agent(query, max_papers=max_papers)
+				lit_span.set_output({
+					"papers": len(lit_result.papers),
+					"triples": len(lit_result.triples),
+					"errors": lit_result.errors,
+				})
+		else:
+			lit_result = await run_literature_agent(query, max_papers=max_papers)
 		result.literature_result = lit_result
 		result.errors.extend(lit_result.errors)
 
 		if lit_result.triples:
-			merged = await merge_triples_to_graph(lit_result.triples)
+			if tracer:
+				with tracer.span("merge_triples_to_graph", input_data={"count": len(lit_result.triples)}) as merge_span:
+					merged = await merge_triples_to_graph(lit_result.triples)
+					merge_span.set_output({"merged": merged})
+			else:
+				merged = await merge_triples_to_graph(lit_result.triples)
 			await _emit(on_event, "triples_merged", {"count": merged})
 
 		await _emit(on_event, "stage_complete", {
@@ -177,7 +194,12 @@ async def run_pipeline(
 			max_pivots=max_pivots,
 			triples=triples_dicts,
 		)
-		lit_cp = await run_checkpoint(lit_checkpoint_ctx)
+		if tracer:
+			with tracer.span("checkpoint_literature", input_data={"entity": source_name, "pivots": pivot_count}) as cp_span:
+				lit_cp = await run_checkpoint(lit_checkpoint_ctx)
+				cp_span.set_output({"decision": lit_cp.decision.value, "reason": lit_cp.reason, "confidence": lit_cp.confidence})
+		else:
+			lit_cp = await run_checkpoint(lit_checkpoint_ctx)
 		result.checkpoint_log.append({
 			"stage": "literature",
 			"decision": lit_cp.decision.value,
@@ -217,13 +239,24 @@ async def run_pipeline(
 		await _emit(on_event, "stage_start", {"stage": "graph", "entity": source_name})
 
 		all_hypotheses: list[ABCHypothesis] = []
-		for target in targets:
-			hyps = await find_abc_hypotheses(
-				source_name=source_name,
-				source_type=start_type,
-				target_type=target,
-			)
-			all_hypotheses.extend(hyps)
+		if tracer:
+			with tracer.span("graph_abc_search", input_data={"entity": source_name, "targets": targets}) as graph_span:
+				for target in targets:
+					hyps = await find_abc_hypotheses(
+						source_name=source_name,
+						source_type=start_type,
+						target_type=target,
+					)
+					all_hypotheses.extend(hyps)
+				graph_span.set_output({"hypotheses_found": len(all_hypotheses)})
+		else:
+			for target in targets:
+				hyps = await find_abc_hypotheses(
+					source_name=source_name,
+					source_type=start_type,
+					target_type=target,
+				)
+				all_hypotheses.extend(hyps)
 
 		result.hypotheses = all_hypotheses
 		triples_for_scoring = lit_result.triples if lit_result else []
@@ -250,7 +283,12 @@ async def run_pipeline(
 			max_pivots=max_pivots,
 			hypotheses=hyp_dicts,
 		)
-		graph_cp = await run_checkpoint(graph_checkpoint_ctx)
+		if tracer:
+			with tracer.span("checkpoint_graph", input_data={"entity": source_name, "hypotheses": len(all_hypotheses)}) as gcp_span:
+				graph_cp = await run_checkpoint(graph_checkpoint_ctx)
+				gcp_span.set_output({"decision": graph_cp.decision.value, "reason": graph_cp.reason})
+		else:
+			graph_cp = await run_checkpoint(graph_checkpoint_ctx)
 		result.checkpoint_log.append({
 			"stage": "graph",
 			"decision": graph_cp.decision.value,

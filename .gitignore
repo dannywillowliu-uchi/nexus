@@ -56,3 +56,6 @@ MISSION_STATE.md
 
 # Learning system archives (keep active files)
 learning/sessions/archive-*.md
+
+# Traces
+traces/
