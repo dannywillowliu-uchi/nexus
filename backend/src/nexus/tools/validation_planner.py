@@ -320,8 +320,11 @@ async def _fetch_sequence_for_gene(gene_name: str) -> str | None:
 		return None
 
 
-async def _resolve_inputs(hypothesis: dict) -> HypothesisInputs:
-	"""Extract and fetch all needed inputs from a scored hypothesis dict."""
+async def _resolve_inputs(hypothesis: dict) -> tuple[HypothesisInputs, dict[str, str]]:
+	"""Extract and fetch all needed inputs from a scored hypothesis dict.
+
+	Returns a tuple of (inputs, report) where report maps input names to "fetched" or "failed".
+	"""
 	abc_path = hypothesis.get("abc_path", {})
 	a = abc_path.get("a", {})
 	b = abc_path.get("b", {})
@@ -329,6 +332,7 @@ async def _resolve_inputs(hypothesis: dict) -> HypothesisInputs:
 	h_type = hypothesis.get("hypothesis_type", "connection")
 
 	inputs = HypothesisInputs(hypothesis_type=h_type)
+	report: dict[str, str] = {}
 
 	drug_entity = None
 	protein_entity = None
@@ -362,19 +366,24 @@ async def _resolve_inputs(hypothesis: dict) -> HypothesisInputs:
 		results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 		for key, result in zip(keys, results):
 			if isinstance(result, Exception):
+				report[key] = "failed"
 				continue
-			if key == "sdf" and result:
-				inputs._sdf_content = result
-			elif key == "smiles" and result:
-				inputs.drug_smiles = result
-			elif key == "pdb" and result:
-				inputs._pdb_content = result
-			elif key == "sequence" and result:
-				inputs.protein_sequence = result
-			elif key == "smiles_2" and result:
-				inputs.drug_smiles_2 = result
+			if result:
+				report[key] = "fetched"
+				if key == "sdf":
+					inputs._sdf_content = result
+				elif key == "smiles":
+					inputs.drug_smiles = result
+				elif key == "pdb":
+					inputs._pdb_content = result
+				elif key == "sequence":
+					inputs.protein_sequence = result
+				elif key == "smiles_2":
+					inputs.drug_smiles_2 = result
+			else:
+				report[key] = "failed"
 
-	return inputs
+	return inputs, report
 
 
 async def _upload_files(inputs: HypothesisInputs, client: TamarindClient) -> None:
@@ -420,25 +429,44 @@ async def run_validation_plan(hypothesis: dict) -> list[ToolResponse]:
 			raw_data={"reason": "missing_api_key"},
 		)]
 
-	inputs = await _resolve_inputs(hypothesis)
+	inputs, input_report = await _resolve_inputs(hypothesis)
 
 	client = TamarindClient()
 	await _upload_files(inputs, client)
 
 	jobs_to_run: list[tuple[str, dict]] = []
+	skipped_tools: list[str] = []
 	for cfg in tool_configs:
 		job_settings = build_job_settings(cfg.tool_type, inputs)
 		if job_settings is not None:
 			jobs_to_run.append((cfg.tool_type, job_settings))
+		else:
+			failed_inputs = [k for k, v in input_report.items() if v == "failed"]
+			skipped_tools.append(
+				f"{cfg.tool_type} skipped: missing {', '.join(failed_inputs) if failed_inputs else cfg.input_type.value} input"
+			)
 
-	if not jobs_to_run:
-		return [ToolResponse(
+	results: list[ToolResponse] = []
+
+	if skipped_tools:
+		results.append(ToolResponse(
 			status="partial",
 			confidence_delta=0.0,
 			evidence_type="neutral",
-			summary=f"No tools could be configured for {h_type}: missing required inputs.",
-			raw_data={"hypothesis_type": h_type},
-		)]
+			summary=f"Skipped tools: {'; '.join(skipped_tools)}",
+			raw_data={"skipped": skipped_tools, "input_report": input_report},
+		))
+
+	if not jobs_to_run:
+		if not results:
+			results.append(ToolResponse(
+				status="partial",
+				confidence_delta=0.0,
+				evidence_type="neutral",
+				summary=f"No tools could run for {h_type}: all inputs failed ({input_report})",
+				raw_data={"hypothesis_type": h_type, "input_report": input_report},
+			))
+		return results
 
 	ts = int(time.time())
 
@@ -486,6 +514,7 @@ async def run_validation_plan(hypothesis: dict) -> list[ToolResponse]:
 				raw_data={"tool_type": tool_type, "error": str(exc)},
 			)
 
-	tasks = [_run_single(tool_type, tool_settings) for tool_type, tool_settings in jobs_to_run]
-	results = await asyncio.gather(*tasks)
-	return list(results)
+	job_tasks = [_run_single(tool_type, tool_settings) for tool_type, tool_settings in jobs_to_run]
+	job_results = await asyncio.gather(*job_tasks)
+	results.extend(job_results)
+	return results

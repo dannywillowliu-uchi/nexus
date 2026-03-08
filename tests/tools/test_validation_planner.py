@@ -307,3 +307,58 @@ async def test_run_validation_plan_comorbidity():
 	assert len(results) > 0
 	for r in results:
 		assert isinstance(r, ToolResponse)
+
+
+@pytest.mark.asyncio
+async def test_run_validation_plan_reports_skipped_tools():
+	"""When input resolution fails, skipped tools include specific reasons."""
+	hypothesis = {
+		"hypothesis_type": "drug_repurposing",
+		"abc_path": {
+			"a": {"name": "UnknownDrug", "type": "Drug"},
+			"b": {"name": "UnknownGene", "type": "Gene"},
+			"c": {"name": "SomeDisease", "type": "Disease"},
+		},
+	}
+
+	# All input fetches fail
+	with patch("nexus.tools.validation_planner._fetch_pdb_for_gene", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sdf_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_smiles_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sequence_for_gene", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner.TamarindClient") as MockClient:
+		instance = MockClient.return_value
+		instance.run_job = AsyncMock()
+
+		from nexus.tools.validation_planner import run_validation_plan
+		results = await run_validation_plan(hypothesis)
+
+	# Should have results explaining what failed
+	assert len(results) >= 1
+	summaries = " ".join(r.summary for r in results)
+	# Should mention specific inputs that failed, not just generic "missing inputs"
+	assert "skipped" in summaries.lower() or "failed" in summaries.lower()
+
+
+@pytest.mark.asyncio
+async def test_resolve_inputs_returns_report():
+	"""_resolve_inputs returns an input resolution report as second value."""
+	with patch("nexus.tools.validation_planner._fetch_pdb_for_gene", new_callable=AsyncMock, return_value="ATOM ..."), \
+		 patch("nexus.tools.validation_planner._fetch_sdf_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_smiles_for_drug", new_callable=AsyncMock, return_value="CCO"), \
+		 patch("nexus.tools.validation_planner._fetch_sequence_for_gene", new_callable=AsyncMock, return_value="MKKLT"):
+
+		from nexus.tools.validation_planner import _resolve_inputs
+		inputs, report = await _resolve_inputs({
+			"hypothesis_type": "drug_repurposing",
+			"abc_path": {
+				"a": {"name": "Aspirin", "type": "Drug"},
+				"b": {"name": "COX2", "type": "Gene"},
+				"c": {"name": "Pain", "type": "Disease"},
+			},
+		})
+
+	assert report["pdb"] == "fetched"
+	assert report["sdf"] == "failed"
+	assert report["smiles"] == "fetched"
+	assert report["sequence"] == "fetched"
