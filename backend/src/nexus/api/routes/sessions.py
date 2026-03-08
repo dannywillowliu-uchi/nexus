@@ -17,6 +17,9 @@ router = APIRouter()
 # Track active background pipeline tasks
 _active_tasks: dict[str, asyncio.Task] = {}
 
+# Cache pipeline results keyed by session_id
+_session_results: dict[str, dict] = {}
+
 
 @router.post("/sessions")
 async def create_session(request: SessionRequest):
@@ -30,6 +33,8 @@ async def create_session(request: SessionRequest):
 			output_data=data,
 		)
 		event_store.add(event)
+		if event_type == "pipeline_complete":
+			_session_results[session_id] = data
 
 	task = asyncio.create_task(
 		run_pipeline(
@@ -97,9 +102,24 @@ async def get_session_events(session_id: str):
 
 @router.get("/sessions/{session_id}/report")
 async def get_session_report(session_id: str):
+	events = event_store.get_by_session(session_id)
+	if not events:
+		return {"session_id": session_id, "status": "not_found", "hypotheses": []}
+
+	# Check if pipeline is complete
+	complete_events = [e for e in events if e.event_type == "pipeline_complete"]
+	if not complete_events:
+		task = _active_tasks.get(session_id)
+		status = "running" if task and not task.done() else "unknown"
+		return {"session_id": session_id, "status": status, "hypotheses": [], "events_count": len(events)}
+
+	# Extract hypothesis data from events
+	hypothesis_events = [e for e in events if e.event_type == "hypothesis_scored"]
+	hypotheses = [e.output_data for e in hypothesis_events if e.output_data]
+
 	return {
 		"session_id": session_id,
-		"status": "placeholder",
-		"hypotheses": [],
-		"summary": "Full report integration coming soon.",
+		"status": "completed",
+		"hypotheses": hypotheses,
+		"events_count": len(events),
 	}
