@@ -1,5 +1,8 @@
+from unittest.mock import patch, AsyncMock, MagicMock
+
 import pytest
 
+from nexus.tools.schema import ToolResponse
 from nexus.tools.tamarind_tools import InputType
 from nexus.tools.validation_planner import (
 	build_job_settings,
@@ -181,3 +184,109 @@ def test_score_temstapro():
 	delta, etype = score_tool_result("temstapro", {"thermostable": True})
 	assert delta > 0
 	assert etype == "supporting"
+
+
+@pytest.mark.asyncio
+async def test_run_validation_plan_drug_repurposing():
+	"""drug_repurposing hypothesis runs docking + ADMET in parallel."""
+	hypothesis = {
+		"hypothesis_type": "drug_repurposing",
+		"abc_path": {
+			"a": {"name": "Fostamatinib", "type": "Drug"},
+			"b": {"name": "IRAK1", "type": "Gene"},
+			"c": {"name": "rheumatoid arthritis", "type": "Disease"},
+		},
+	}
+
+	mock_run_job = AsyncMock(return_value={
+		"status": "Complete",
+		"result": {"docking_score": -7.5},
+	})
+
+	with patch("nexus.tools.validation_planner._fetch_pdb_for_gene", new_callable=AsyncMock, return_value="ATOM ...") as mock_pdb, \
+		 patch("nexus.tools.validation_planner._fetch_sdf_for_drug", new_callable=AsyncMock, return_value=b"SDF...") as mock_sdf, \
+		 patch("nexus.tools.validation_planner._fetch_smiles_for_drug", new_callable=AsyncMock, return_value="CCO") as mock_smiles, \
+		 patch("nexus.tools.validation_planner._fetch_sequence_for_gene", new_callable=AsyncMock, return_value="MKKLT") as mock_seq, \
+		 patch("nexus.tools.validation_planner.TamarindClient") as MockClient:
+		instance = MockClient.return_value
+		instance.upload_file = AsyncMock(return_value="uploaded.pdb")
+		instance.run_job = mock_run_job
+
+		from nexus.tools.validation_planner import run_validation_plan
+		results = await run_validation_plan(hypothesis)
+
+	assert len(results) > 0
+	for r in results:
+		assert isinstance(r, ToolResponse)
+
+
+@pytest.mark.asyncio
+async def test_run_validation_plan_target_discovery():
+	"""target_discovery hypothesis runs structure + function prediction."""
+	hypothesis = {
+		"hypothesis_type": "target_discovery",
+		"abc_path": {
+			"a": {"name": "rheumatoid arthritis", "type": "Disease"},
+			"b": {"name": "TNF", "type": "Gene"},
+			"c": {"name": "IRAK1", "type": "Gene"},
+		},
+	}
+
+	mock_run_job = AsyncMock(return_value={
+		"status": "Complete",
+		"result": {"plddt_score": 85.0},
+	})
+
+	with patch("nexus.tools.validation_planner._fetch_pdb_for_gene", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sdf_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_smiles_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sequence_for_gene", new_callable=AsyncMock, return_value="MKKLTFFF"), \
+		 patch("nexus.tools.validation_planner.TamarindClient") as MockClient:
+		instance = MockClient.return_value
+		instance.run_job = mock_run_job
+
+		from nexus.tools.validation_planner import run_validation_plan
+		results = await run_validation_plan(hypothesis)
+
+	assert len(results) > 0
+	for r in results:
+		assert isinstance(r, ToolResponse)
+
+
+@pytest.mark.asyncio
+async def test_run_validation_plan_no_api_key():
+	"""Skips validation when no API key is configured."""
+	hypothesis = {
+		"hypothesis_type": "drug_repurposing",
+		"abc_path": {
+			"a": {"name": "Fostamatinib", "type": "Drug"},
+			"b": {"name": "IRAK1", "type": "Gene"},
+			"c": {"name": "RA", "type": "Disease"},
+		},
+	}
+
+	with patch("nexus.tools.validation_planner.settings") as mock_settings:
+		mock_settings.tamarind_bio_api_key = None
+
+		from nexus.tools.validation_planner import run_validation_plan
+		results = await run_validation_plan(hypothesis)
+
+	assert len(results) == 1
+	assert results[0].status == "partial"
+	assert "api key" in results[0].summary.lower() or "tamarind" in results[0].summary.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_validation_plan_comorbidity_empty():
+	"""comorbidity returns no Tamarind results (uses graph tools instead)."""
+	hypothesis = {
+		"hypothesis_type": "comorbidity",
+		"abc_path": {
+			"a": {"name": "diabetes", "type": "Disease"},
+			"b": {"name": "obesity", "type": "Disease"},
+			"c": {"name": "CVD", "type": "Disease"},
+		},
+	}
+	from nexus.tools.validation_planner import run_validation_plan
+	results = await run_validation_plan(hypothesis)
+	assert results == []

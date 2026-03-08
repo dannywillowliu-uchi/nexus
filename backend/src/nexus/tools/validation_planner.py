@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from dataclasses import dataclass, field
 
-from nexus.tools.tamarind_tools import TOOL_CONFIGS, InputType
+import httpx
+
+from nexus.config import settings
+from nexus.tools.schema import ToolResponse
+from nexus.tools.tamarind_client import TamarindClient
+from nexus.tools.tamarind_tools import TOOL_CONFIGS, InputType, get_tools_for_hypothesis
 
 
 @dataclass
@@ -212,3 +220,272 @@ def score_tool_result(tool_type: str, result: dict) -> tuple[float, str]:
 	if tool_type in ("temstapro", "deepstabp"):
 		return _score_thermostability(result)
 	return _score_default(result)
+
+
+logger = logging.getLogger(__name__)
+
+RCSB_SEARCH_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
+UNIPROT_API = "https://rest.uniprot.org/uniprotkb/search"
+
+
+async def _fetch_pdb_for_gene(gene_name: str) -> str | None:
+	"""Fetch PDB content from RCSB PDB for a gene/protein."""
+	query = {
+		"query": {
+			"type": "terminal",
+			"service": "full_text",
+			"parameters": {"value": f"{gene_name} human"},
+		},
+		"return_type": "entry",
+		"request_options": {"paginate": {"start": 0, "rows": 1}},
+	}
+	try:
+		async with httpx.AsyncClient(timeout=15.0) as client:
+			resp = await client.post(RCSB_SEARCH_URL, json=query)
+			if resp.status_code != 200:
+				return None
+			data = resp.json()
+			results = data.get("result_set", [])
+			if not results:
+				return None
+			pdb_id = results[0].get("identifier", "")
+			if not pdb_id:
+				return None
+			pdb_resp = await client.get(
+				f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=30.0
+			)
+			pdb_resp.raise_for_status()
+			return pdb_resp.text
+	except Exception:
+		logger.debug("Could not fetch PDB for %s", gene_name)
+		return None
+
+
+async def _fetch_sdf_for_drug(drug_name: str) -> bytes | None:
+	"""Download SDF from PubChem for a drug name."""
+	try:
+		async with httpx.AsyncClient(timeout=15.0) as client:
+			resp = await client.get(
+				f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{drug_name}/SDF"
+			)
+			if resp.status_code != 200:
+				return None
+			return resp.content
+	except Exception:
+		logger.debug("Could not fetch SDF for %s", drug_name)
+		return None
+
+
+async def _fetch_smiles_for_drug(drug_name: str) -> str | None:
+	"""Fetch canonical SMILES from PubChem for a drug name."""
+	try:
+		async with httpx.AsyncClient(timeout=15.0) as client:
+			resp = await client.get(
+				f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{drug_name}/property/CanonicalSMILES/JSON"
+			)
+			if resp.status_code != 200:
+				return None
+			data = resp.json()
+			props = data.get("PropertyTable", {}).get("Properties", [])
+			if props:
+				return props[0].get("CanonicalSMILES")
+			return None
+	except Exception:
+		logger.debug("Could not fetch SMILES for %s", drug_name)
+		return None
+
+
+async def _fetch_sequence_for_gene(gene_name: str) -> str | None:
+	"""Fetch protein sequence from UniProt for a gene name."""
+	try:
+		async with httpx.AsyncClient(timeout=15.0) as client:
+			resp = await client.get(
+				UNIPROT_API,
+				params={
+					"query": f"gene_exact:{gene_name} AND organism_id:9606",
+					"format": "json",
+					"size": "1",
+				},
+			)
+			if resp.status_code != 200:
+				return None
+			data = resp.json()
+			results = data.get("results", [])
+			if not results:
+				return None
+			seq = results[0].get("sequence", {}).get("value")
+			return seq
+	except Exception:
+		logger.debug("Could not fetch sequence for %s", gene_name)
+		return None
+
+
+async def _resolve_inputs(hypothesis: dict) -> HypothesisInputs:
+	"""Extract and fetch all needed inputs from a scored hypothesis dict."""
+	abc_path = hypothesis.get("abc_path", {})
+	a = abc_path.get("a", {})
+	b = abc_path.get("b", {})
+	c = abc_path.get("c", {})
+	h_type = hypothesis.get("hypothesis_type", "connection")
+
+	inputs = HypothesisInputs(hypothesis_type=h_type)
+
+	drug_entity = None
+	protein_entity = None
+
+	for entity in [a, b, c]:
+		etype = entity.get("type", "").lower()
+		if etype in ("drug", "compound"):
+			if drug_entity is None:
+				drug_entity = entity
+			else:
+				inputs.drug_name_2 = entity.get("name")
+		elif etype in ("gene", "protein"):
+			if protein_entity is None:
+				protein_entity = entity
+
+	tasks = {}
+	if drug_entity:
+		inputs.drug_name = drug_entity.get("name")
+		tasks["sdf"] = _fetch_sdf_for_drug(inputs.drug_name)
+		tasks["smiles"] = _fetch_smiles_for_drug(inputs.drug_name)
+	if protein_entity:
+		inputs.protein_name = protein_entity.get("name")
+		tasks["pdb"] = _fetch_pdb_for_gene(inputs.protein_name)
+		tasks["sequence"] = _fetch_sequence_for_gene(inputs.protein_name)
+
+	if inputs.drug_name_2:
+		tasks["smiles_2"] = _fetch_smiles_for_drug(inputs.drug_name_2)
+
+	if tasks:
+		keys = list(tasks.keys())
+		results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+		for key, result in zip(keys, results):
+			if isinstance(result, Exception):
+				continue
+			if key == "sdf" and result:
+				inputs._sdf_content = result
+			elif key == "smiles" and result:
+				inputs.drug_smiles = result
+			elif key == "pdb" and result:
+				inputs._pdb_content = result
+			elif key == "sequence" and result:
+				inputs.protein_sequence = result
+			elif key == "smiles_2" and result:
+				inputs.drug_smiles_2 = result
+
+	return inputs
+
+
+async def _upload_files(inputs: HypothesisInputs, client: TamarindClient) -> None:
+	"""Upload PDB and SDF files to Tamarind if they exist."""
+	upload_tasks = []
+
+	if inputs._pdb_content:
+		pdb_filename = f"nexus-{inputs.protein_name}.pdb".replace(" ", "_")
+		inputs.protein_pdb_file = pdb_filename
+		upload_tasks.append(client.upload_file(pdb_filename, inputs._pdb_content.encode()))
+
+	if inputs._sdf_content:
+		sdf_filename = f"nexus-{inputs.drug_name}.sdf".replace(" ", "_")
+		inputs.ligand_file = sdf_filename
+		upload_tasks.append(client.upload_file(sdf_filename, inputs._sdf_content))
+
+	if upload_tasks:
+		await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+
+async def run_validation_plan(hypothesis: dict) -> list[ToolResponse]:
+	"""Run all appropriate validation tools for a hypothesis.
+
+	1. Determine hypothesis type
+	2. Resolve inputs (fetch PDB/SDF/SMILES/sequence)
+	3. Upload files to Tamarind
+	4. Select tools and build job settings
+	5. Run all jobs in parallel
+	6. Score results and return ToolResponses
+	"""
+	h_type = hypothesis.get("hypothesis_type", "connection")
+	tool_configs = get_tools_for_hypothesis(h_type)
+
+	if not tool_configs:
+		return []
+
+	if not settings.tamarind_bio_api_key:
+		return [ToolResponse(
+			status="partial",
+			confidence_delta=0.0,
+			evidence_type="neutral",
+			summary="Validation skipped: no Tamarind Bio API key configured.",
+			raw_data={"reason": "missing_api_key"},
+		)]
+
+	inputs = await _resolve_inputs(hypothesis)
+
+	client = TamarindClient()
+	await _upload_files(inputs, client)
+
+	jobs_to_run: list[tuple[str, dict]] = []
+	for cfg in tool_configs:
+		job_settings = build_job_settings(cfg.tool_type, inputs)
+		if job_settings is not None:
+			jobs_to_run.append((cfg.tool_type, job_settings))
+
+	if not jobs_to_run:
+		return [ToolResponse(
+			status="partial",
+			confidence_delta=0.0,
+			evidence_type="neutral",
+			summary=f"No tools could be configured for {h_type}: missing required inputs.",
+			raw_data={"hypothesis_type": h_type},
+		)]
+
+	ts = int(time.time())
+
+	async def _run_single(tool_type: str, tool_settings: dict) -> ToolResponse:
+		job_name = f"nexus-val-{tool_type}-{ts}-{hash(str(tool_settings)) % 10000:04d}"
+		try:
+			result = await client.run_job(
+				job_name=job_name,
+				job_type=tool_type,
+				settings=tool_settings,
+				timeout=300.0,
+			)
+			job_status = result.get("status", "")
+			if job_status != "Complete":
+				return ToolResponse(
+					status="partial",
+					confidence_delta=0.0,
+					evidence_type="neutral",
+					summary=f"{tool_type} job ended with status: {job_status}",
+					raw_data={"tool_type": tool_type, "job_name": job_name, "status": job_status},
+				)
+			result_data = result.get("result", {}) or {}
+			confidence_delta, evidence_type = score_tool_result(tool_type, result_data)
+			return ToolResponse(
+				status="success",
+				confidence_delta=confidence_delta,
+				evidence_type=evidence_type,
+				summary=f"{tool_type}: completed successfully",
+				raw_data={"tool_type": tool_type, "job_name": job_name, **result_data},
+			)
+		except TimeoutError:
+			return ToolResponse(
+				status="partial",
+				confidence_delta=0.0,
+				evidence_type="neutral",
+				summary=f"{tool_type} job timed out",
+				raw_data={"tool_type": tool_type, "job_name": job_name, "status": "timeout"},
+			)
+		except Exception as exc:
+			return ToolResponse(
+				status="error",
+				confidence_delta=0.0,
+				evidence_type="neutral",
+				summary=f"{tool_type} failed: {exc}",
+				raw_data={"tool_type": tool_type, "error": str(exc)},
+			)
+
+	tasks = [_run_single(tool_type, tool_settings) for tool_type, tool_settings in jobs_to_run]
+	results = await asyncio.gather(*tasks)
+	return list(results)
