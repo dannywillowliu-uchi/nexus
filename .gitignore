@@ -55,6 +55,9 @@ MISSION_STATE.md
 .claude/worktrees/
 .claude/projects/
 
+# Git worktrees
+.worktrees/
+
 # Learning system archives (keep active files)
 learning/sessions/archive-*.md
 
