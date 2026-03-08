@@ -46,6 +46,12 @@ export async function getHypothesis(id: string) {
   return res.json();
 }
 
+export async function getResearchOutput(sessionId: string) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/research-output`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function exploreGraph(params: { entity_name: string; entity_type: string; depth?: number }) {
   const query = new URLSearchParams({
     entity_name: params.entity_name,
