@@ -15,6 +15,7 @@ class CheckpointResult:
 	pivot_entity: str | None = None
 	pivot_entity_type: str | None = None
 	confidence: float = 0.0
+	branch_entities: list[dict] | None = None  # [{"name": "X", "type": "Y"}, ...]
 
 
 @dataclass

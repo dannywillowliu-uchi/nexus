@@ -243,3 +243,39 @@ async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge,
 	assert result.pivots[0]["stage"] == "graph"
 	# run_literature_agent called twice: initial + pivot re-run
 	assert mock_lit.await_count == 2
+
+
+@patch("nexus.pipeline.orchestrator.graph_client")
+@patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
+@patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
+@patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
+@patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
+async def test_run_pipeline_branch_bounded(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+	"""BRANCH decision runs lightweight graph-only branches, max 3 concurrent."""
+	branch_result = CheckpointResult(
+		decision=CheckpointDecision.BRANCH,
+		reason="Explore BACE1 and TREM2 in parallel",
+		pivot_entity="BACE1",
+		pivot_entity_type="Gene",
+		branch_entities=[
+			{"name": "BACE1", "type": "Gene"},
+			{"name": "TREM2", "type": "Gene"},
+		],
+		confidence=0.85,
+	)
+
+	mock_cp.side_effect = [branch_result, CONTINUE_RESULT]
+	mock_lit.return_value = MOCK_LIT_RESULT
+	mock_abc.return_value = [MOCK_HYPOTHESIS]
+	mock_merge.return_value = 2
+	mock_gc.resolve_entity_multi = _mock_resolve_multi()
+
+	result = await run_pipeline(
+		query="Alzheimer",
+		start_entity="Alzheimer",
+		target_types=["Compound"],
+	)
+
+	assert result.step == PipelineStep.COMPLETED
+	assert len(result.branches) >= 1
+	assert len(result.scored_hypotheses) >= 1
