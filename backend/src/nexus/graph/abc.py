@@ -31,9 +31,26 @@ class ABCHypothesis:
 	intermediaries: list[dict] = field(default_factory=list)
 
 
-# Hetionet relationship type weights (all 24 canonical types + extras)
+# Relationship type weights for path strength scoring.
+# Covers actual Neo4j graph labels (from Hetionet seed) plus literature edges.
 RELATIONSHIP_WEIGHTS: dict[str, float] = {
-	# Compound relationships
+	# Drug-Disease (high signal for drug repurposing)
+	"INDICATION": 1.0,
+	"OFF_LABEL_USE": 0.85,
+	"CONTRAINDICATION": 0.4,
+	# Drug-Gene/Protein (pharmacological)
+	"TARGET": 0.9,
+	"ENZYME": 0.7,
+	"TRANSPORTER": 0.65,
+	"CARRIER": 0.6,
+	# Disease-Gene (genomic association)
+	"ASSOCIATED_WITH": 0.85,
+	# Disease-Phenotype
+	"PHENOTYPE_PRESENT": 0.7,
+	# Literature-derived edges
+	"LITERATURE_EDGE": 0.75,
+	"LITERATURE_ASSOCIATION": 0.7,
+	# Legacy Hetionet abbreviation forms (kept for compatibility)
 	"TREATS_CtD": 1.0,
 	"PALLIATES_CpD": 0.9,
 	"BINDS_CbG": 0.9,
@@ -41,12 +58,10 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"DOWNREGULATES_CdG": 0.7,
 	"CAUSES_CcSE": 0.6,
 	"RESEMBLES_CrC": 0.65,
-	# Disease relationships
 	"ASSOCIATES_DaG": 0.85,
 	"LOCALIZES_DlA": 0.75,
 	"RESEMBLES_DrD": 0.6,
 	"PRESENTS_DpS": 0.7,
-	# Gene relationships
 	"INTERACTS_GiG": 0.8,
 	"COVARIES_GcG": 0.65,
 	"REGULATES_GrG": 0.75,
@@ -54,26 +69,12 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"PARTICIPATES_GpCC": 0.7,
 	"PARTICIPATES_GpMF": 0.75,
 	"PARTICIPATES_GpPW": 0.8,
-	# Anatomy relationships
 	"EXPRESSES_AeG": 0.7,
 	"UPREGULATES_AuG": 0.65,
 	"DOWNREGULATES_AdG": 0.65,
-	# Pharmacologic class
 	"INCLUDES_PCiC": 0.55,
-	# Gene-Disease
 	"ASSOCIATES_GaD": 0.85,
-	# Symptom-Disease (reverse direction label)
 	"PRESENTS_SpD": 0.7,
-	# Extra convenience aliases (uppercase Cypher-sanitized forms)
-	"TREATS": 1.0,
-	"BINDS": 0.9,
-	"ASSOCIATES": 0.85,
-	"INTERACTS": 0.8,
-	"REGULATES": 0.75,
-	"PARTICIPATES": 0.8,
-	"EXPRESSES": 0.7,
-	"PALLIATES": 0.9,
-	"RESEMBLES": 0.65,
 }
 
 

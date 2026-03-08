@@ -73,14 +73,37 @@ async def merge_triples_to_graph(triples: list[Triple]) -> int:
 	return count
 
 
+def _fuzzy_entity_match(entity: str, triple_text: str) -> bool:
+	"""Check if an entity name appears in triple text, with partial matching."""
+	entity_lower = entity.lower()
+	text_lower = triple_text.lower()
+	# Exact match
+	if entity_lower == text_lower:
+		return True
+	# Substring match (e.g., "Alzheimer" in "Alzheimer disease")
+	if entity_lower in text_lower or text_lower in entity_lower:
+		return True
+	# Word overlap: if >50% of words match
+	entity_words = set(entity_lower.split())
+	text_words = set(text_lower.split())
+	if entity_words and text_words:
+		overlap = entity_words & text_words
+		if len(overlap) / min(len(entity_words), len(text_words)) > 0.5:
+			return True
+	return False
+
+
 def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:
 	"""Score a hypothesis based on evidence from triples."""
-	# Count relevant triples (where subject or object matches any entity in the path)
-	path_entities = {abc.a_name.lower(), abc.b_name.lower(), abc.c_name.lower()}
-	relevant_count = sum(
-		1 for t in triples
-		if t.subject.lower() in path_entities or t.object.lower() in path_entities
-	)
+	# Count relevant triples using fuzzy matching (entity names from literature
+	# often don't exactly match graph node names)
+	path_entities = [abc.a_name, abc.b_name, abc.c_name]
+	relevant_count = 0
+	for t in triples:
+		for entity in path_entities:
+			if _fuzzy_entity_match(entity, t.subject) or _fuzzy_entity_match(entity, t.object):
+				relevant_count += 1
+				break
 	evidence_score = min(relevant_count / 5.0, 1.0)
 
 	# Determine hypothesis type from A/C types
