@@ -219,8 +219,15 @@ HYPOTHESIS_TOOL_MAP: dict[str, list[str]] = {
 		"admet",
 		"aqueous-solubility",
 	],
-	"comorbidity": [],
-	"connection": [],
+	"comorbidity": [
+		"esmfold",
+		"deepfri",
+		"temstapro",
+	],
+	"connection": [
+		"admet",
+		"esmfold",
+	],
 }
 
 

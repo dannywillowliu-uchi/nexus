@@ -73,9 +73,20 @@ def test_get_tools_for_mechanism():
 
 
 def test_get_tools_for_comorbidity():
-	"""comorbidity returns an empty list (no Tamarind tools, uses existing graph tools)."""
+	"""comorbidity returns gene-focused analysis tools."""
 	tools = get_tools_for_hypothesis("comorbidity")
-	assert tools == []
+	tool_types = [t.tool_type for t in tools]
+	assert "esmfold" in tool_types
+	assert "deepfri" in tool_types
+	assert "temstapro" in tool_types
+
+
+def test_get_tools_for_connection():
+	"""connection returns best-effort tools based on available inputs."""
+	tools = get_tools_for_hypothesis("connection")
+	tool_types = [t.tool_type for t in tools]
+	assert "admet" in tool_types
+	assert "esmfold" in tool_types
 
 
 def test_get_tools_for_unknown_type():

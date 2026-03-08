@@ -277,16 +277,33 @@ async def test_run_validation_plan_no_api_key():
 
 
 @pytest.mark.asyncio
-async def test_run_validation_plan_comorbidity_empty():
-	"""comorbidity returns no Tamarind results (uses graph tools instead)."""
+async def test_run_validation_plan_comorbidity():
+	"""comorbidity with gene intermediary runs gene-focused tools."""
 	hypothesis = {
 		"hypothesis_type": "comorbidity",
 		"abc_path": {
 			"a": {"name": "diabetes", "type": "Disease"},
-			"b": {"name": "obesity", "type": "Disease"},
+			"b": {"name": "IL6", "type": "Gene"},
 			"c": {"name": "CVD", "type": "Disease"},
 		},
 	}
-	from nexus.tools.validation_planner import run_validation_plan
-	results = await run_validation_plan(hypothesis)
-	assert results == []
+
+	mock_run_job = AsyncMock(return_value={
+		"status": "Complete",
+		"result": {"plddt_score": 88.0},
+	})
+
+	with patch("nexus.tools.validation_planner._fetch_pdb_for_gene", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sdf_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_smiles_for_drug", new_callable=AsyncMock, return_value=None), \
+		 patch("nexus.tools.validation_planner._fetch_sequence_for_gene", new_callable=AsyncMock, return_value="MKKLTFFF"), \
+		 patch("nexus.tools.validation_planner.TamarindClient") as MockClient:
+		instance = MockClient.return_value
+		instance.run_job = mock_run_job
+
+		from nexus.tools.validation_planner import run_validation_plan
+		results = await run_validation_plan(hypothesis)
+
+	assert len(results) > 0
+	for r in results:
+		assert isinstance(r, ToolResponse)
