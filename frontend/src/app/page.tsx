@@ -1,65 +1,101 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+const stats = [
+  { label: "Discoveries", value: "2,847" },
+  { label: "Hypotheses Validated", value: "412" },
+  { label: "Active Sessions", value: "23" },
+];
+
+const sampleDiscoveries = [
+  {
+    title: "VEGFA mediates unexpected link between Diabetes and Retinopathy",
+    disease: "Diabetes",
+    novelty: 0.89,
+    path: "Diabetes -> VEGFA -> Diabetic Retinopathy",
+  },
+  {
+    title: "IL-6 pathway connects Rheumatoid Arthritis to Depression",
+    disease: "Rheumatoid Arthritis",
+    novelty: 0.76,
+    path: "Rheumatoid Arthritis -> IL-6 -> Major Depression",
+  },
+  {
+    title: "BRCA1 repair mechanism reveals Ovarian Cancer drug target",
+    disease: "Ovarian Cancer",
+    novelty: 0.92,
+    path: "Ovarian Cancer -> BRCA1 -> PARP Inhibitor Sensitivity",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="bg-fafafa">
+      {/* Hero */}
+      <section className="mx-auto max-w-7xl px-6 py-24 text-center">
+        <h1 className="text-5xl font-bold tracking-tight text-slate-800">
+          Nexus
+        </h1>
+        <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-500">
+          Autonomous biological discovery through ABC reasoning. Uncover hidden
+          connections between diseases, genes, and compounds that no one has
+          explored before.
+        </p>
+        <Link href="/query">
+          <Button className="mt-8 bg-teal-600 px-8 py-3 text-base hover:bg-teal-700">
+            Start a Discovery Session
+          </Button>
+        </Link>
+      </section>
+
+      {/* Stats */}
+      <section className="mx-auto max-w-7xl px-6 pb-16">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          {stats.map((stat) => (
+            <Card key={stat.label} className="text-center">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-3xl font-bold text-teal-600">
+                  {stat.value}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-500">{stat.label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* Sample Discoveries */}
+      <section className="mx-auto max-w-7xl px-6 pb-24">
+        <h2 className="mb-6 text-2xl font-semibold text-slate-800">
+          Recent Discoveries
+        </h2>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {sampleDiscoveries.map((d) => (
+            <Card key={d.title} className="transition-shadow hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary" className="bg-teal-50 text-teal-700">
+                    {d.disease}
+                  </Badge>
+                  <span className="text-sm font-medium text-emerald-600">
+                    {(d.novelty * 100).toFixed(0)}% novel
+                  </span>
+                </div>
+                <CardTitle className="mt-2 text-base leading-snug">
+                  {d.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="font-mono text-xs text-slate-400">{d.path}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </main>
+      </section>
     </div>
   );
 }
