@@ -344,3 +344,73 @@ async def test_run_pipeline_validation_uses_planner():
 
 	assert mock_validate.called
 	assert len(result.validation_results) > 0
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_validation_reranks():
+	"""Validation results feed back into overall_score and re-rank hypotheses."""
+	hyp_strong = ABCHypothesis(
+		a_id="D1", a_name="RA", a_type="Disease",
+		b_id="G1", b_name="TNF", b_type="Gene",
+		c_id="C1", c_name="Drug1", c_type="Drug",
+		ab_relationship="ASSOCIATED_WITH", bc_relationship="TARGET",
+		path_count=3, novelty_score=0.7, path_strength=0.5,
+	)
+	hyp_weak = ABCHypothesis(
+		a_id="D1", a_name="RA", a_type="Disease",
+		b_id="G2", b_name="IL6", b_type="Gene",
+		c_id="C2", c_name="Drug2", c_type="Drug",
+		ab_relationship="ASSOCIATED_WITH", bc_relationship="TARGET",
+		path_count=5, novelty_score=0.9, path_strength=0.8,
+	)
+
+	with patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock) as mock_lit, \
+		 patch("nexus.pipeline.orchestrator.graph_client") as mock_graph, \
+		 patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock) as mock_cp, \
+		 patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock) as mock_abc, \
+		 patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock) as mock_sum, \
+		 patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock) as mock_brief, \
+		 patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock) as mock_validate, \
+		 patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock) as mock_merge:
+
+		mock_lit.return_value = LiteratureResult(papers=[], triples=[], errors=[])
+		mock_cp.return_value = CheckpointResult(
+			decision=CheckpointDecision.CONTINUE, reason="ok", confidence=0.8,
+		)
+		mock_graph.resolve_entity_multi = AsyncMock(return_value=[])
+		mock_merge.return_value = 0
+
+		# hyp_weak has higher base score, hyp_strong has lower base score
+		mock_abc.return_value = [hyp_weak, hyp_strong]
+		mock_sum.return_value = ["s1", "s2"]
+		mock_brief.side_effect = Exception("skip")
+
+		# hyp_strong (Drug1) gets great validation, hyp_weak (Drug2) gets bad validation
+		async def validation_side_effect(hypothesis):
+			if "Drug1" in hypothesis.get("title", ""):
+				return [ToolResponse(
+					status="success", confidence_delta=0.8,
+					evidence_type="supporting", summary="strong docking",
+					raw_data={"tool_type": "diffdock"},
+				)]
+			else:
+				return [ToolResponse(
+					status="success", confidence_delta=-0.1,
+					evidence_type="contradicting", summary="weak docking",
+					raw_data={"tool_type": "diffdock"},
+				)]
+
+		mock_validate.side_effect = validation_side_effect
+
+		result = await run_pipeline("test", start_entity="RA", start_type="Disease", target_types=["Drug"])
+
+	# After re-ranking, both should have pre_validation_score and updated overall_score
+	for sh in result.scored_hypotheses:
+		assert "pre_validation_score" in sh
+
+	# hyp_strong (Drug1) should now rank higher despite lower base score
+	# because validation gave it +0.8 delta
+	drug1 = next(sh for sh in result.scored_hypotheses if "Drug1" in sh["title"])
+	drug2 = next(sh for sh in result.scored_hypotheses if "Drug2" in sh["title"])
+	assert drug1["overall_score"] > drug2["overall_score"]
+	assert drug1["pre_validation_score"] < drug2["pre_validation_score"]

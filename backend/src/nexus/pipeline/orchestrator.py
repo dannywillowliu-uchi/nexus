@@ -684,6 +684,19 @@ async def run_pipeline(
 							result.scored_hypotheses[i]["validations"] = []
 						result.scored_hypotheses[i]["validations"].append(entry)
 
+		# --- Post-validation re-ranking ---
+		for sh in result.scored_hypotheses:
+			validations = sh.get("validations", [])
+			if validations:
+				avg_delta = sum(v["confidence_delta"] for v in validations) / len(validations)
+			else:
+				avg_delta = 0.0
+			sh["pre_validation_score"] = sh["overall_score"]
+			sh["validation_boost"] = round(avg_delta, 4)
+			sh["overall_score"] = round(sh["overall_score"] * 0.8 + avg_delta * 0.2, 4)
+
+		result.scored_hypotheses.sort(key=lambda h: h.get("overall_score", 0), reverse=True)
+
 		await _emit(on_event, "stage_complete", {
 			"stage": "validation",
 			"validation_results": len(result.validation_results),
