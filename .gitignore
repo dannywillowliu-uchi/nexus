@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+.vercel
+
+# Neo4j
+*.dump
+Neo4j-*.txt
+
+# Data
+data/hetionet/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Mission Control
+mission-control.db
+mission_report.json
+MISSION_STATE.md
+
+# Learning system archives (keep active files)
+learning/sessions/archive-*.md
