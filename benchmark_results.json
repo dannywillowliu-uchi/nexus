@@ -1,0 +1,302 @@
+{
+  "cases": [
+    {
+      "case": "Thalidomide -> Multiple Myeloma",
+      "drug": "Thalidomide",
+      "disease": "plasma cell myeloma",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "TNF",
+        "CRBN"
+      ],
+      "found_intermediaries": [
+        "CRBN",
+        "TNF"
+      ],
+      "expected_intermediaries": [
+        "TNF",
+        "VEGFA",
+        "IL6",
+        "CRBN"
+      ],
+      "rel_types": [
+        "TARGET",
+        "TARGET"
+      ],
+      "weighted_score": 4.52,
+      "suggested_assay": "Cell viability (MTT) + cytokine ELISA (TNF-alpha, IL-6, VEGF) in MM.1S, RPMI-8226 myeloma lines. Co-culture with HS-5 stromal cells. Drug: 0-100 uM.",
+      "total_results": 50
+    },
+    {
+      "case": "Sildenafil -> Pulmonary Hypertension",
+      "drug": "Sildenafil",
+      "disease": "pulmonary arterial hypertension",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "PDE5A"
+      ],
+      "found_intermediaries": [
+        "PDE5A"
+      ],
+      "expected_intermediaries": [
+        "PDE5A"
+      ],
+      "rel_types": [
+        "TARGET"
+      ],
+      "weighted_score": 4.51,
+      "suggested_assay": "cGMP ELISA + calcium imaging in primary PASMCs. Pre-contract with endothelin-1, then add sildenafil 0.01-10 uM. Positive control: SNP (NO donor).",
+      "total_results": 50
+    },
+    {
+      "case": "Riluzole -> Melanoma",
+      "drug": "Riluzole",
+      "disease": "melanoma",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "GRM1"
+      ],
+      "found_intermediaries": [
+        "GRM1"
+      ],
+      "expected_intermediaries": [
+        "GRM1"
+      ],
+      "rel_types": [
+        "LITERATURE_ASSOCIATION"
+      ],
+      "weighted_score": 3.76,
+      "suggested_assay": "MTS viability in C8161 (GRM1+), UACC903 (GRM1+), UACC930 (GRM1-, negative control). Riluzole 0-50 uM for 96h. Positive control: BAY 36-7620 (GRM1 antagonist). Expected: GRM1-dependent killing.",
+      "total_results": 50
+    },
+    {
+      "case": "Imatinib -> GIST",
+      "drug": "Imatinib",
+      "disease": "gastrointestinal stromal tumor",
+      "rank": 47,
+      "in_top_5": false,
+      "in_top_10": false,
+      "in_top_20": false,
+      "in_top_30": false,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "KIT"
+      ],
+      "found_intermediaries": [
+        "CYP2C9",
+        "KIT"
+      ],
+      "expected_intermediaries": [
+        "KIT",
+        "PDGFRA"
+      ],
+      "rel_types": [
+        "ENZYME",
+        "TARGET"
+      ],
+      "weighted_score": 3.02,
+      "suggested_assay": "Phospho-KIT Western blot + viability in GIST-T1 (KIT exon 11 mutant). Imatinib 0.01-1 uM. Expected: KIT phosphorylation inhibition + growth arrest. Test that KIT ranks above ABL1.",
+      "total_results": 50
+    },
+    {
+      "case": "Niclosamide -> Colorectal Cancer",
+      "drug": "Niclosamide",
+      "disease": "colorectal cancer",
+      "rank": 8,
+      "in_top_5": false,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": false,
+      "matched_intermediaries": [],
+      "found_intermediaries": [
+        "CYP2C9"
+      ],
+      "expected_intermediaries": [
+        "CTNNB1",
+        "GSK3B"
+      ],
+      "rel_types": [
+        "ENZYME"
+      ],
+      "weighted_score": 0.060000000000000005,
+      "suggested_assay": "TOPFlash Wnt reporter luciferase + MTT viability in HCT116, SW480, HEK293. Niclosamide 0.1-10 uM. Western blot: beta-catenin, phospho-beta-catenin, Dvl2.",
+      "total_results": 50
+    },
+    {
+      "case": "Auranofin -> Ovarian Cancer",
+      "drug": "Auranofin",
+      "disease": "ovarian cancer",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": false,
+      "matched_intermediaries": [],
+      "found_intermediaries": [
+        "ALB",
+        "PRDX5"
+      ],
+      "expected_intermediaries": [
+        "TXNRD1"
+      ],
+      "rel_types": [
+        "CARRIER",
+        "TARGET"
+      ],
+      "weighted_score": 3.02,
+      "suggested_assay": "TrxR activity assay (DTNB at 412nm) + MTT viability + ROS (DCFH-DA) in 2008 (CisPt-sensitive) and C13* (CisPt-resistant). Auranofin 0.5-4 uM. Rescue with NAC 5mM. Expected: resistant cells MORE sensitive.",
+      "total_results": 50
+    },
+    {
+      "case": "Metformin -> Colorectal Cancer",
+      "drug": "Metformin",
+      "disease": "colorectal cancer",
+      "rank": 3,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": false,
+      "matched_intermediaries": [],
+      "found_intermediaries": [
+        "ETFDH",
+        "SLC22A1"
+      ],
+      "expected_intermediaries": [
+        "PRKAA1",
+        "PRKAA2",
+        "MTOR",
+        "PRKAB1"
+      ],
+      "rel_types": [
+        "TARGET",
+        "TRANSPORTER"
+      ],
+      "weighted_score": 3.02,
+      "suggested_assay": "Western blot pAMPK(Thr172)/pmTOR(Ser2448)/pS6K + MTT viability in HCT116, SW480, HT-29. Metformin 1-20 mM. Positive control: AICAR. Caveat: mM doses are supraphysiological.",
+      "total_results": 31
+    },
+    {
+      "case": "Aspirin -> Colorectal Cancer",
+      "drug": "Nitroaspirin",
+      "disease": "colorectal cancer",
+      "rank": 19,
+      "in_top_5": false,
+      "in_top_10": false,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": false,
+      "matched_intermediaries": [],
+      "found_intermediaries": [
+        "PTGS1"
+      ],
+      "expected_intermediaries": [
+        "PTGS2"
+      ],
+      "rel_types": [
+        "TARGET"
+      ],
+      "weighted_score": 3.01,
+      "suggested_assay": "COX-2 activity (PGE2 ELISA) + MTT viability in HT-29 (high COX-2) vs SW480 (low COX-2). Aspirin 0.5-5 mM. Expected: preferential PGE2 reduction and growth inhibition in COX-2-high line.",
+      "total_results": 27
+    },
+    {
+      "case": "Valproic Acid -> Glioblastoma",
+      "drug": "Valproic acid",
+      "disease": "glioblastoma (disease)",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "HDAC2"
+      ],
+      "found_intermediaries": [
+        "CYP2C9",
+        "HDAC2"
+      ],
+      "expected_intermediaries": [
+        "HDAC1",
+        "HDAC2"
+      ],
+      "rel_types": [
+        "ENZYME",
+        "TARGET"
+      ],
+      "weighted_score": 4.52,
+      "suggested_assay": "HDAC activity (fluorometric) + acetyl-H3/H4 Western blot + cell cycle (flow cytometry) in U87-MG, U251, T98G. VPA 0.5-5 mM. Positive control: SAHA/vorinostat. Expected: HDAC inhibition + G1 arrest.",
+      "total_results": 50
+    },
+    {
+      "case": "Propranolol -> Hemangioma",
+      "drug": "Propranolol",
+      "disease": "hemangioma",
+      "rank": 1,
+      "in_top_5": true,
+      "in_top_10": true,
+      "in_top_20": true,
+      "in_top_30": true,
+      "in_top_50": true,
+      "intermediary_match": true,
+      "matched_intermediaries": [
+        "ADRB1",
+        "ADRB2"
+      ],
+      "found_intermediaries": [
+        "ADRB1",
+        "ADRB2"
+      ],
+      "expected_intermediaries": [
+        "ADRB1",
+        "ADRB2",
+        "VEGFA"
+      ],
+      "rel_types": [
+        "TARGET",
+        "TARGET"
+      ],
+      "weighted_score": 4.52,
+      "suggested_assay": "VEGF ELISA + BrdU proliferation + tube formation in HemECs (hemangioma-derived endothelial cells). Propranolol 1-100 uM. Expected: VEGF reduction + anti-proliferative + anti-angiogenic.",
+      "total_results": 50
+    }
+  ],
+  "summary": {
+    "tested": 10,
+    "found": 10,
+    "recall_5": 0.7,
+    "recall_10": 0.8,
+    "recall_20": 0.9,
+    "recall_30": 0.9,
+    "recall_50": 1.0,
+    "mrr": 0.6532241508025382,
+    "intermediary_accuracy": 0.6
+  }
+}
