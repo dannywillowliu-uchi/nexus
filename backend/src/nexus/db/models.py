@@ -43,6 +43,7 @@ class ResearchBrief(BaseModel):
 	existing_knowledge_comparison: str
 	confidence: ConfidenceAssessment
 	suggested_validation: str
+	researcher_narrative: str = ""
 
 
 class Hypothesis(BaseModel):

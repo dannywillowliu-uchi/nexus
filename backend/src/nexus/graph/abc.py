@@ -34,16 +34,18 @@ class ABCHypothesis:
 
 # Relationship type weights for path strength scoring.
 # Covers actual PrimeKG Neo4j labels plus literature edges.
+# Note: Cypher CASE weights (TARGET=3.0, ENZYME=0.05) in the query handle
+# traversal ranking; these weights are used for post-query path_strength scoring.
 RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	# Drug-Disease (high signal for drug repurposing)
 	"INDICATION": 1.0,
 	"OFF_LABEL_USE": 0.9,
 	"CONTRAINDICATION": 0.4,
-	# Drug-Gene/Protein (pharmacological)
-	"TARGET": 0.95,
-	"ENZYME": 0.75,
-	"TRANSPORTER": 0.7,
-	"CARRIER": 0.7,
+	# Drug-Gene/Protein (pharmacological targets >> metabolic)
+	"TARGET": 1.0,
+	"ENZYME": 0.15,
+	"TRANSPORTER": 0.3,
+	"CARRIER": 0.35,
 	# Disease-Gene (genomic association)
 	"ASSOCIATED_WITH": 0.85,
 	# Phenotype edges
@@ -51,7 +53,7 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"PHENOTYPE_PRESENT": 0.7,
 	# Literature-derived edges
 	"LITERATURE_EDGE": 0.75,
-	"LITERATURE_ASSOCIATION": 0.8,
+	"LITERATURE_ASSOCIATION": 0.85,
 	# PrimeKG protein-protein interactions
 	"PROTEIN_PROTEIN": 0.8,
 	# PrimeKG ontology edges
@@ -63,31 +65,6 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"ANATOMY_PROTEIN_PRESENT": 0.7,
 	"ANATOMY_PROTEIN_ABSENT": 0.3,
 	"DRUG_EFFECT": 0.6,
-	# Legacy Hetionet abbreviation forms (kept for compatibility)
-	"TREATS_CtD": 1.0,
-	"PALLIATES_CpD": 0.9,
-	"BINDS_CbG": 0.9,
-	"UPREGULATES_CuG": 0.7,
-	"DOWNREGULATES_CdG": 0.7,
-	"CAUSES_CcSE": 0.6,
-	"RESEMBLES_CrC": 0.65,
-	"ASSOCIATES_DaG": 0.85,
-	"LOCALIZES_DlA": 0.75,
-	"RESEMBLES_DrD": 0.6,
-	"PRESENTS_DpS": 0.7,
-	"INTERACTS_GiG": 0.8,
-	"COVARIES_GcG": 0.65,
-	"REGULATES_GrG": 0.75,
-	"PARTICIPATES_GpBP": 0.8,
-	"PARTICIPATES_GpCC": 0.7,
-	"PARTICIPATES_GpMF": 0.75,
-	"PARTICIPATES_GpPW": 0.8,
-	"EXPRESSES_AeG": 0.7,
-	"UPREGULATES_AuG": 0.65,
-	"DOWNREGULATES_AdG": 0.65,
-	"INCLUDES_PCiC": 0.55,
-	"ASSOCIATES_GaD": 0.85,
-	"PRESENTS_SpD": 0.7,
 }
 
 # Intermediary type multipliers -- Gene intermediaries are most valuable
@@ -170,15 +147,31 @@ async def _query_intermediary_type(
 		AND a <> c AND b <> c AND b <> a
 		{ab_rel_clause}
 		{exclude_clause}
-		WITH a, c,
+		WITH a, c, b, r1, r2,
+			CASE
+				WHEN type(r1) = 'TARGET' THEN 3.0
+				WHEN type(r1) = 'LITERATURE_ASSOCIATION' THEN 2.5
+				WHEN type(r1) = 'CARRIER' THEN 0.1
+				WHEN type(r1) = 'TRANSPORTER' THEN 0.1
+				WHEN type(r1) = 'ENZYME' THEN 0.05
+				ELSE 0.1
+			END AS r1_weight,
+			CASE WHEN type(r2) = 'LITERATURE_ASSOCIATION' THEN 1.5 ELSE 1.0 END AS novelty_bonus
+		WITH a, c, b, max(r1_weight) AS best_weight, max(novelty_bonus) AS best_novelty,
 			collect(DISTINCT {{
 				b_id: toString(coalesce(b.primekg_index, b.identifier, elementId(b))),
 				b_name: coalesce(b.name, ''),
 				b_type: labels(b)[0],
 				ab_rel: type(r1),
 				bc_rel: type(r2)
-			}}) AS intermediaries,
-			count(DISTINCT b) AS path_count
+			}}) AS gene_intermediaries
+		WITH a, c,
+			reduce(acc = [], gi IN collect(gene_intermediaries) | acc + gi) AS intermediaries,
+			count(DISTINCT b) AS path_count,
+			max(best_weight) AS max_edge_weight,
+			max(best_novelty) AS has_novel
+		WITH a, c, intermediaries, path_count, max_edge_weight, has_novel,
+			max_edge_weight * has_novel + 0.01 * path_count AS weighted_score
 		RETURN
 			toString(coalesce(a.primekg_index, a.identifier, elementId(a))) AS a_id,
 			a.name AS a_name,
@@ -187,8 +180,9 @@ async def _query_intermediary_type(
 			c.name AS c_name,
 			labels(c)[0] AS c_type,
 			intermediaries,
-			path_count
-		ORDER BY path_count DESC
+			path_count,
+			weighted_score
+		ORDER BY weighted_score DESC
 		LIMIT $max_results
 	"""
 

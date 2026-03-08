@@ -15,7 +15,6 @@ import json
 import logging
 import sys
 import uuid
-from datetime import datetime
 from pathlib import Path
 
 # Add backend/src to path
@@ -78,14 +77,16 @@ async def run_full_pipeline(
 	query: str,
 	start_entity: str | None,
 	start_type: str,
-	max_papers: int,
 	max_hypotheses: int,
 	max_pivots: int,
 	tracer: Tracer,
+	session_id: str,
 ) -> dict:
-	"""Run the full pipeline including graph search."""
+	"""Run the full pipeline including graph search, validation, and lab experiments."""
+	from nexus.db.models import SessionRequest
 	from nexus.graph.client import graph_client
-	from nexus.pipeline.orchestrator import run_pipeline
+	from nexus.harness.event_store import EventStore
+	from nexus.harness.runner import run_research_session
 
 	with tracer.span("pipeline", input_data={
 		"query": query,
@@ -104,40 +105,34 @@ async def run_full_pipeline(
 				raise
 
 		try:
-			# Track events
-			events: list[dict] = []
+			# Set up event store with live CLI output
+			event_store = EventStore()
+			event_store.register_callback(
+				lambda e: print(f"  [EVENT] {e.event_type}: {json.dumps(e.output_data, default=str)[:120] if e.output_data else ''}")
+			)
 
-			async def on_event(event_type: str, data: dict) -> None:
-				events.append({"type": event_type, "data": data})
-				print(f"  [EVENT] {event_type}: {json.dumps(data, default=str)[:100]}")
-
-			result = await run_pipeline(
+			# Build session request
+			request = SessionRequest(
 				query=query,
 				start_entity=start_entity,
 				start_type=start_type,
 				max_hypotheses=max_hypotheses,
-				max_papers=max_papers,
 				max_pivots=max_pivots,
-				on_event=on_event,
 			)
 
+			# Run complete research session (pipeline + validation + lab experiments + reasoning)
+			result = await run_research_session(session_id, request, event_store)
+
 			pipeline_span.set_output({
-				"hypotheses": len(result.scored_hypotheses),
-				"pivots": len(result.pivots),
-				"errors": result.errors,
-				"step": result.step.value,
+				"hypotheses": len(result.get("hypotheses", [])),
+				"pivot_count": result.get("pivot_count", 0),
+				"events_count": result.get("events_count", 0),
 			})
 
 		finally:
 			await graph_client.close()
 
-	return {
-		"hypotheses": result.scored_hypotheses[:5],
-		"pivots": result.pivots,
-		"checkpoint_log": result.checkpoint_log,
-		"errors": result.errors,
-		"events": events,
-	}
+	return result
 
 
 async def main() -> None:
@@ -183,10 +178,10 @@ async def main() -> None:
 				query=args.query,
 				start_entity=args.entity,
 				start_type=args.type,
-				max_papers=args.max_papers,
 				max_hypotheses=args.max_hypotheses,
 				max_pivots=args.max_pivots,
 				tracer=tracer,
+				session_id=session_id,
 			)
 
 		# Print results summary
@@ -205,8 +200,98 @@ async def main() -> None:
 
 		if "hypotheses" in results and results["hypotheses"]:
 			print(f"\nTop hypotheses: {len(results['hypotheses'])}")
-			for h in results["hypotheses"][:5]:
-				print(f"  {h.get('title', '?')} | score: {h.get('overall_score', 0):.3f}")
+			for idx, h in enumerate(results["hypotheses"][:5]):
+				print(f"\n  [{idx+1}] {h.get('title', '?')} | score: {h.get('overall_score', 0):.3f}")
+				if h.get("summary"):
+					print(f"      Summary: {h['summary'][:120]}")
+
+				# Validation result
+				vr = h.get("validation_result", {})
+				if vr:
+					print(f"      Validation: {vr.get('verdict', 'N/A')} (confidence: {vr.get('confidence', 'N/A')})")
+
+				# Lab experiment results
+				exp = h.get("experiment", {})
+				if exp and exp.get("status") != "error":
+					print(f"\n      --- Lab Experiment ---")
+					# Protocol validation
+					validation = exp.get("validation", {})
+					if validation:
+						print(f"      Protocol valid: {validation.get('valid', '?')}")
+						for w in validation.get("warnings", []):
+							print(f"        Warning: {w}")
+
+					# Dry run
+					dry_run = exp.get("dry_run", {})
+					for log_line in dry_run.get("logs", []):
+						print(f"        {log_line}")
+
+					# Simulated results
+					sim = exp.get("simulated_results", {})
+					if sim:
+						# QC metrics
+						qc = sim.get("qc_metrics", {})
+						if qc:
+							z = qc.get("z_factor", 0)
+							s2b = qc.get("signal_to_background", 0)
+							cv = qc.get("cv_percent", 0)
+							print(f"      QC Metrics: Z-factor={z:.3f} ({'PASS' if qc.get('pass_z_factor') else 'FAIL'}) | "
+								  f"S/B={s2b:.1f} ({'PASS' if qc.get('pass_s2b') else 'FAIL'}) | CV={cv:.1f}%")
+
+						# Dose-response table
+						dose_resp = sim.get("dose_response", [])
+						if dose_resp:
+							print(f"      Dose-Response ({len(dose_resp)} points):")
+							print(f"        {'Conc (uM)':>10}  {'Mean':>8}  {'Std':>8}  {'CV%':>6}")
+							print(f"        {'-'*10}  {'-'*8}  {'-'*8}  {'-'*6}")
+							for pt in dose_resp:
+								print(f"        {pt['concentration_uM']:>10.2f}  {pt['mean_response']:>8.4f}  {pt['std']:>8.4f}  {pt['cv_percent']:>6.1f}")
+
+						# Analysis
+						analysis = sim.get("analysis", {})
+						if analysis:
+							active = analysis.get("active", False)
+							print(f"      Activity: {'ACTIVE' if active else 'INACTIVE'}")
+							if active:
+								print(f"        IC50 = {analysis.get('ic50_uM', 'N/A')} uM | "
+									  f"Hill = {analysis.get('hill_coefficient', 'N/A')} | "
+									  f"Max inhibition = {analysis.get('max_inhibition_percent', 'N/A')}%")
+
+					# Interpretation
+					interp = exp.get("interpretation", {})
+					if interp:
+						verdict = interp.get("verdict", "N/A").upper()
+						conf = interp.get("confidence", 0)
+						print(f"      Verdict: {verdict} (confidence: {conf:.2f})")
+						print(f"      Reasoning: {interp.get('reasoning', 'N/A')[:200]}")
+						concerns = interp.get("concerns", [])
+						if concerns:
+							print(f"      Concerns:")
+							for c in concerns:
+								print(f"        - {c}")
+						next_steps = interp.get("next_steps", [])
+						if next_steps:
+							print(f"      Next steps:")
+							for s in next_steps:
+								print(f"        - {s}")
+
+					# Retry experiment (if refuted and retried)
+					retry = h.get("experiment_retry", {})
+					if retry:
+						print(f"\n      --- Retry Experiment (standard budget) ---")
+						retry_interp = retry.get("interpretation", {})
+						if retry_interp:
+							print(f"      Verdict: {retry_interp.get('verdict', 'N/A').upper()} "
+								  f"(confidence: {retry_interp.get('confidence', 0):.2f})")
+							print(f"      Reasoning: {retry_interp.get('reasoning', 'N/A')[:200]}")
+
+				elif exp.get("status") == "error":
+					print(f"      Experiment error: {exp.get('error', 'unknown')}")
+
+		if results.get("pivot_count"):
+			print(f"\nPivots: {results['pivot_count']}")
+		if results.get("events_count"):
+			print(f"Events: {results['events_count']}")
 
 		if results.get("errors"):
 			print(f"\nErrors: {len(results['errors'])}")

@@ -15,7 +15,8 @@ from nexus.graph.abc import ABCHypothesis
 logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-4-20250514"
-MAX_TOKENS = 2000
+BRIEF_MAX_TOKENS = 4096
+SUMMARY_MAX_TOKENS = 2000
 
 
 def _parse_json(text: str) -> object:
@@ -87,37 +88,50 @@ Return a JSON array where each element has:
 Return ONLY the JSON array, no other text."""
 
 
-RESEARCH_BRIEF_PROMPT = """You are a biomedical research analyst. Generate a detailed research brief for the following hypothesis.
+RESEARCHER_REASONING_PROMPT = """You are a senior translational researcher reviewing a computationally-generated drug repurposing hypothesis. Think out loud as a researcher would — don't just report scores, reason through the biology.
 
-Hypothesis path: {a_name} ({a_type}) --[{ab_rel}]--> {b_name} ({b_type}) --[{bc_rel}]--> {c_name} ({c_type})
+HYPOTHESIS:
+{drug_name} may have therapeutic activity against {disease_name} via {intermediary_gene}.
 
-Path statistics:
-- Number of connecting paths: {path_count}
-- Path strength: {path_strength:.3f}
+EVIDENCE:
+- Drug->Gene link: {drug_gene_relationship} (confidence: {confidence_1:.2f})
+- Gene->Disease link: {gene_disease_relationship} (confidence: {confidence_2:.2f})
+- Path redundancy: {path_count} independent intermediaries
+- Novel edges: {novel_edge_info}
 
-Relevant triples from literature:
-{triples_text}
+Structure your analysis as a researcher thinking through this problem:
 
-Paper abstracts:
-{papers_text}
+1. BIOLOGICAL PLAUSIBILITY
+Think through the mechanism step by step. What does {intermediary_gene} actually do in the cell? What happens when {drug_name} affects it? Why would that matter for {disease_name}? Be specific about the molecular mechanism — explain the causal chain, don't just say "it's involved in the pathway."
 
-Return a JSON object with:
-- "connection_explanation": detailed explanation of how A connects to C through B
-- "literature_evidence": array of {{"paper_id": str, "title": str, "snippet": str, "confidence": float}}
-- "existing_knowledge_comparison": how this compares to existing knowledge
-- "confidence": {{
-    "graph_evidence": float (0-1),
-    "graph_reasoning": str,
-    "literature_support": float (0-1),
-    "literature_reasoning": str,
-    "biological_plausibility": float (0-1),
-    "plausibility_reasoning": str,
-    "novelty": float (0-1),
-    "novelty_reasoning": str
-  }}
-- "suggested_validation": experimental approaches to test this hypothesis
+2. STRENGTH OF EVIDENCE
+What's the strongest piece of evidence supporting this? What's the weakest? Be honest about gaps. If the drug-gene link is only from metabolic enzymes (CYP450s), say that's much weaker than a direct pharmacological target. If the gene-disease association is from a GWAS study, note that correlation isn't causation.
 
-Return ONLY the JSON object, no other text."""
+3. WHAT A RESEARCHER WOULD DO FIRST
+Describe the first experiment — not in general terms but specifically:
+- What cell lines would you use? Name specific lines relevant to the disease.
+- What assay would you run? MTT/MTS viability? Reporter gene? Binding assay? Why that one over alternatives?
+- What concentrations of the drug? Base this on known pharmacology — what are typical plasma concentrations? What range makes sense for an in vitro experiment?
+- What controls? Name a positive control drug that's known to work on this target, and a negative control cell line that doesn't express the target.
+- What readout tells you it's working? Be specific about the measurement.
+- How long would this take and roughly what would it cost?
+
+4. WHY THIS MIGHT FAIL
+Be intellectually honest. Give the top 3 reasons this hypothesis could be wrong. For each one, explain what would need to be true for the hypothesis to succeed despite this concern. Consider: bioavailability, selectivity, resistance mechanisms, patient subsets, concentration issues.
+
+5. CLINICAL SIGNIFICANCE
+If this IS real, what would it mean for patients? How many people have {disease_name}? What are current treatment options and their limitations? What gap would {drug_name} fill? Is there a specific patient population (e.g., treatment-resistant, specific mutation status) that would benefit most?
+
+Write as a scientist talking to another scientist — rigorous but accessible. Use specific numbers, gene names, drug concentrations, and cell line names wherever possible. No vague hand-waving."""
+
+
+SCORE_EXTRACTION_PROMPT = """Given this research brief, extract confidence scores (0.0-1.0) for each dimension.
+
+Brief:
+{narrative}
+
+Return ONLY a JSON object:
+{{"graph_evidence": float, "graph_reasoning": "one sentence", "literature_support": float, "literature_reasoning": "one sentence", "biological_plausibility": float, "plausibility_reasoning": "one sentence", "novelty": float, "novelty_reasoning": "one sentence"}}"""
 
 
 async def generate_quick_summaries(
@@ -160,7 +174,7 @@ async def generate_quick_summaries(
 		client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 		message = await client.messages.create(
 			model=MODEL,
-			max_tokens=MAX_TOKENS,
+			max_tokens=SUMMARY_MAX_TOKENS,
 			messages=[{"role": "user", "content": prompt}],
 		)
 
@@ -178,15 +192,28 @@ async def generate_quick_summaries(
 		return [_template_summary(h) for h in hypotheses]
 
 
+def _build_novel_edge_info(hypothesis: ABCHypothesis, triples: list[Triple]) -> str:
+	"""Summarise any novel (literature-extracted) edges relevant to this hypothesis."""
+	path_entities = {hypothesis.a_name.lower(), hypothesis.b_name.lower(), hypothesis.c_name.lower()}
+	novel = [
+		f"{t.subject} --[{t.predicate}]--> {t.object} (conf {t.confidence})"
+		for t in triples
+		if t.subject.lower() in path_entities or t.object.lower() in path_entities
+	]
+	if novel:
+		return "; ".join(novel[:5])
+	return "None — all edges from curated knowledge graph"
+
+
 async def generate_research_brief(
 	hypothesis: ABCHypothesis,
 	triples: list[Triple],
 	papers: list[dict],
 ) -> ResearchBrief:
-	"""Generate a detailed research brief for a single hypothesis.
+	"""Generate a detailed research brief using the researcher reasoning prompt.
 
-	Uses a per-hypothesis Claude call with full context including triples
-	and paper abstracts.
+	Calls Claude Sonnet with the RESEARCHER_REASONING_PROMPT to produce a
+	full narrative analysis, then extracts structured confidence scores.
 
 	Args:
 		hypothesis: The ABC hypothesis to analyze.
@@ -194,79 +221,125 @@ async def generate_research_brief(
 		papers: List of paper dicts with at least 'paper_id', 'title', 'abstract'.
 
 	Returns:
-		A ResearchBrief with structured analysis and confidence assessment.
+		A ResearchBrief with researcher_narrative and structured scores.
 	"""
 	if not settings.anthropic_api_key:
 		logger.warning("No Anthropic API key configured, returning minimal brief")
 		return _minimal_brief(hypothesis)
 
-	triples_text = _format_triples(triples)
-	papers_parts: list[str] = []
-	for p in papers:
-		papers_parts.append(
-			f"Paper ID: {p.get('paper_id', '')}\n"
-			f"Title: {p.get('title', '')}\n"
-			f"Abstract: {p.get('abstract', '')}\n"
-		)
-	papers_text = "\n".join(papers_parts) or "No paper abstracts available."
+	# Build template variables from hypothesis
+	novel_edge_info = _build_novel_edge_info(hypothesis, triples)
 
-	prompt = RESEARCH_BRIEF_PROMPT.format(
-		a_name=hypothesis.a_name,
-		a_type=hypothesis.a_type,
-		ab_rel=hypothesis.ab_relationship,
-		b_name=hypothesis.b_name,
-		b_type=hypothesis.b_type,
-		bc_rel=hypothesis.bc_relationship,
-		c_name=hypothesis.c_name,
-		c_type=hypothesis.c_type,
+	prompt = RESEARCHER_REASONING_PROMPT.format(
+		drug_name=hypothesis.a_name,
+		disease_name=hypothesis.c_name,
+		intermediary_gene=hypothesis.b_name,
+		drug_gene_relationship=hypothesis.ab_relationship,
+		confidence_1=hypothesis.path_strength,
+		gene_disease_relationship=hypothesis.bc_relationship,
+		confidence_2=hypothesis.path_strength,
 		path_count=hypothesis.path_count,
-		path_strength=hypothesis.path_strength,
-		triples_text=triples_text or "No supporting triples available.",
-		papers_text=papers_text,
+		novel_edge_info=novel_edge_info,
 	)
+
+	# Append paper abstracts as supplementary context if available
+	if papers:
+		papers_ctx = "\n\nSUPPORTING LITERATURE:\n"
+		for p in papers[:5]:
+			papers_ctx += f"- {p.get('title', 'Untitled')} (ID: {p.get('paper_id', '')})\n  {p.get('abstract', '')[:300]}\n"
+		prompt += papers_ctx
 
 	try:
 		client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+		# Step 1: Generate the full researcher narrative
 		message = await client.messages.create(
 			model=MODEL,
-			max_tokens=MAX_TOKENS,
+			max_tokens=BRIEF_MAX_TOKENS,
 			messages=[{"role": "user", "content": prompt}],
 		)
+		narrative = message.content[0].text
 
-		response_text = message.content[0].text
-		data = _parse_json(response_text)
-
-		confidence_data = data.get("confidence", {})
+		# Step 2: Extract structured confidence scores from the narrative
 		confidence = ConfidenceAssessment(
-			graph_evidence=float(confidence_data.get("graph_evidence", 0.0)),
-			graph_reasoning=str(confidence_data.get("graph_reasoning", "")),
-			literature_support=float(confidence_data.get("literature_support", 0.0)),
-			literature_reasoning=str(confidence_data.get("literature_reasoning", "")),
-			biological_plausibility=float(confidence_data.get("biological_plausibility", 0.0)),
-			plausibility_reasoning=str(confidence_data.get("plausibility_reasoning", "")),
-			novelty=float(confidence_data.get("novelty", 0.0)),
-			novelty_reasoning=str(confidence_data.get("novelty_reasoning", "")),
+			graph_evidence=hypothesis.path_strength,
+			graph_reasoning="Based on graph path strength.",
+			literature_support=0.5,
+			literature_reasoning="Pending score extraction.",
+			biological_plausibility=0.5,
+			plausibility_reasoning="Pending score extraction.",
+			novelty=hypothesis.novelty_score,
+			novelty_reasoning="Based on graph novelty score.",
 		)
+		try:
+			score_msg = await client.messages.create(
+				model="claude-haiku-4-5-20251001",
+				max_tokens=500,
+				messages=[{"role": "user", "content": SCORE_EXTRACTION_PROMPT.format(narrative=narrative[:3000])}],
+			)
+			score_data = _parse_json(score_msg.content[0].text)
+			confidence = ConfidenceAssessment(
+				graph_evidence=float(score_data.get("graph_evidence", hypothesis.path_strength)),
+				graph_reasoning=str(score_data.get("graph_reasoning", "")),
+				literature_support=float(score_data.get("literature_support", 0.0)),
+				literature_reasoning=str(score_data.get("literature_reasoning", "")),
+				biological_plausibility=float(score_data.get("biological_plausibility", 0.0)),
+				plausibility_reasoning=str(score_data.get("plausibility_reasoning", "")),
+				novelty=float(score_data.get("novelty", hypothesis.novelty_score)),
+				novelty_reasoning=str(score_data.get("novelty_reasoning", "")),
+			)
+		except Exception:
+			logger.debug("Score extraction failed, using defaults from narrative")
 
-		evidence_items: list[EvidenceItem] = []
-		for ev in data.get("literature_evidence", []):
-			evidence_items.append(EvidenceItem(
-				paper_id=str(ev.get("paper_id", "")),
-				title=str(ev.get("title", "")),
-				snippet=str(ev.get("snippet", "")),
-				confidence=float(ev.get("confidence", 0.0)),
-			))
+		# Step 3: Extract section content for structured fields
+		sections = _extract_sections(narrative)
 
 		title = f"{hypothesis.a_name} -> {hypothesis.b_name} -> {hypothesis.c_name}"
 		return ResearchBrief(
 			hypothesis_title=title,
-			connection_explanation=str(data.get("connection_explanation", "")),
-			literature_evidence=evidence_items,
-			existing_knowledge_comparison=str(data.get("existing_knowledge_comparison", "")),
+			connection_explanation=sections.get("biological_plausibility", ""),
+			literature_evidence=[],
+			existing_knowledge_comparison=sections.get("strength_of_evidence", ""),
 			confidence=confidence,
-			suggested_validation=str(data.get("suggested_validation", "")),
+			suggested_validation=sections.get("what_a_researcher_would_do_first", ""),
+			researcher_narrative=narrative,
 		)
 
 	except Exception:
 		logger.exception("Failed to generate research brief, returning minimal brief")
 		return _minimal_brief(hypothesis)
+
+
+def _extract_sections(narrative: str) -> dict[str, str]:
+	"""Extract named sections from the researcher narrative."""
+	section_headers = [
+		"BIOLOGICAL PLAUSIBILITY",
+		"STRENGTH OF EVIDENCE",
+		"WHAT A RESEARCHER WOULD DO FIRST",
+		"WHY THIS MIGHT FAIL",
+		"CLINICAL SIGNIFICANCE",
+	]
+	sections: dict[str, str] = {}
+	lines = narrative.split("\n")
+	current_key = ""
+	current_lines: list[str] = []
+
+	for line in lines:
+		stripped = line.strip()
+		# Check if this line is a section header (e.g., "1. BIOLOGICAL PLAUSIBILITY" or "## 1. BIOLOGICAL PLAUSIBILITY")
+		matched = False
+		for header in section_headers:
+			if header in stripped.upper():
+				if current_key:
+					sections[current_key] = "\n".join(current_lines).strip()
+				current_key = header.lower().replace(" ", "_")
+				current_lines = []
+				matched = True
+				break
+		if not matched and current_key:
+			current_lines.append(line)
+
+	if current_key:
+		sections[current_key] = "\n".join(current_lines).strip()
+
+	return sections
