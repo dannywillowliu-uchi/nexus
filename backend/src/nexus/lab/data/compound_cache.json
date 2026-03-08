@@ -139,14 +139,14 @@
 		"solvent": "Water",
 		"storage_temp_C": 4
 	},
-	"donepezil": {
-		"name": "Donepezil",
-		"cas_number": "CHEBI:145499",
+	"sorafenib": {
+		"name": "Sorafenib",
+		"cas_number": "CHEBI:50924",
 		"smiles": "",
-		"inchi_key": "ADEBPBSSDYVVLD-UHFFFAOYSA-N",
-		"molecular_weight": 379.5,
-		"iupac_name": "2-[(1-benzylpiperidin-4-yl)methyl]-5,6-dimethoxy-2,3-dihydroinden-1-one",
-		"pubchem_cid": 3152,
+		"inchi_key": "MLDQJTXFUGDVEO-UHFFFAOYSA-N",
+		"molecular_weight": 464.8,
+		"iupac_name": "4-[4-[[4-chloro-3-(trifluoromethyl)phenyl]carbamoylamino]phenoxy]-N-methylpyridine-2-carboxamide",
+		"pubchem_cid": 216239,
 		"supplier": "",
 		"catalog_number": "",
 		"stock_concentration_uM": 10000.0,

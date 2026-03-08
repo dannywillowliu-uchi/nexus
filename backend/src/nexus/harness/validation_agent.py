@@ -86,12 +86,12 @@ def _parse_tool_decision(response_text: str) -> dict:
 	# Handle markdown code blocks
 	if "```json" in text:
 		start = text.index("```json") + 7
-		end = text.index("```", start)
-		text = text[start:end].strip()
+		end = text.find("```", start)
+		text = text[start:end].strip() if end != -1 else text[start:].strip()
 	elif "```" in text:
 		start = text.index("```") + 3
-		end = text.index("```", start)
-		text = text[start:end].strip()
+		end = text.find("```", start)
+		text = text[start:end].strip() if end != -1 else text[start:].strip()
 
 	try:
 		return json.loads(text)
