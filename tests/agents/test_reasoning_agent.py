@@ -59,29 +59,25 @@ MOCK_SUMMARIES_JSON = json.dumps([
 	},
 ])
 
-MOCK_BRIEF_JSON = json.dumps({
-	"connection_explanation": "Diabetes is linked to PPARG through genetic association, and Metformin targets PPARG directly.",
-	"literature_evidence": [
-		{
-			"paper_id": "paper1",
-			"title": "PPARG in Diabetes",
-			"snippet": "PPARG variants are strongly associated with type 2 diabetes.",
-			"confidence": 0.92,
-		},
-	],
-	"existing_knowledge_comparison": "This connection is partially known but the specific binding mechanism is novel.",
-	"confidence": {
-		"graph_evidence": 0.85,
-		"graph_reasoning": "Multiple paths connect these entities through PPARG.",
-		"literature_support": 0.78,
-		"literature_reasoning": "Several papers support the PPARG-diabetes association.",
-		"biological_plausibility": 0.9,
-		"plausibility_reasoning": "PPARG is a well-known metabolic regulator.",
-		"novelty": 0.6,
-		"novelty_reasoning": "The association is known but the drug mechanism is less explored.",
-	},
-	"suggested_validation": "In vitro binding assay of Metformin to PPARG followed by glucose uptake measurement.",
-})
+MOCK_NARRATIVE = """## 1. BIOLOGICAL PLAUSIBILITY
+
+Diabetes is linked to PPARG through genetic association, and Metformin targets PPARG directly. PPARG is a nuclear receptor that regulates fatty acid storage and glucose metabolism. When activated by thiazolidinediones or similar ligands, it enhances insulin sensitivity.
+
+## 2. STRENGTH OF EVIDENCE
+
+Multiple papers support the PPARG-diabetes association. The strongest evidence comes from GWAS studies linking PPARG variants to T2D risk. The drug-gene link through direct binding is well-established pharmacologically.
+
+## 3. WHAT A RESEARCHER WOULD DO FIRST
+
+In vitro binding assay of Metformin to PPARG followed by glucose uptake measurement. Use HepG2 cells for hepatic context, treat with 1-10mM Metformin, measure PPARG transactivation via luciferase reporter.
+
+## 4. WHY THIS MIGHT FAIL
+
+Metformin's primary mechanism is through AMPK, not PPARG. The binding affinity may be too low to be clinically relevant. Off-target effects could confound results.
+
+## 5. CLINICAL SIGNIFICANCE
+
+Type 2 diabetes affects 462 million people worldwide. Current treatments have limitations including weight gain and cardiovascular risk. If Metformin acts through PPARG, it could explain differential responses in patients with PPARG polymorphisms."""
 
 
 @pytest.mark.asyncio
@@ -133,14 +129,30 @@ async def test_generate_quick_summaries_no_api_key(mock_settings):
 async def test_generate_research_brief(mock_anthropic_cls, mock_settings):
 	mock_settings.anthropic_api_key = "test-key"
 
-	mock_content_block = AsyncMock()
-	mock_content_block.text = MOCK_BRIEF_JSON
+	# First call returns narrative, second call returns scores
+	mock_narrative_block = AsyncMock()
+	mock_narrative_block.text = MOCK_NARRATIVE
 
-	mock_message = AsyncMock()
-	mock_message.content = [mock_content_block]
+	mock_score_block = AsyncMock()
+	mock_score_block.text = json.dumps({
+		"graph_evidence": 0.87,
+		"graph_reasoning": "Multiple paths through PPARG.",
+		"literature_support": 0.78,
+		"literature_reasoning": "Several papers support the association.",
+		"biological_plausibility": 0.9,
+		"plausibility_reasoning": "PPARG is a well-known metabolic regulator.",
+		"novelty": 0.6,
+		"novelty_reasoning": "The association is known but mechanism is less explored.",
+	})
+
+	mock_narrative_msg = AsyncMock()
+	mock_narrative_msg.content = [mock_narrative_block]
+
+	mock_score_msg = AsyncMock()
+	mock_score_msg.content = [mock_score_block]
 
 	mock_client = AsyncMock()
-	mock_client.messages.create = AsyncMock(return_value=mock_message)
+	mock_client.messages.create = AsyncMock(side_effect=[mock_narrative_msg, mock_score_msg])
 	mock_anthropic_cls.return_value = mock_client
 
 	hypothesis = _make_hypothesis()
@@ -156,19 +168,18 @@ async def test_generate_research_brief(mock_anthropic_cls, mock_settings):
 
 	assert brief.hypothesis_title == "Diabetes -> PPARG -> Metformin"
 	assert "PPARG" in brief.connection_explanation
-	assert len(brief.literature_evidence) == 1
-	assert brief.literature_evidence[0].paper_id == "paper1"
-	assert brief.literature_evidence[0].confidence == 0.92
-	assert brief.confidence.graph_evidence == 0.85
+	assert brief.confidence.graph_evidence == 0.87
 	assert brief.confidence.literature_support == 0.78
 	assert brief.confidence.biological_plausibility == 0.9
 	assert brief.confidence.novelty == 0.6
 	assert "binding assay" in brief.suggested_validation.lower()
+	assert brief.researcher_narrative == MOCK_NARRATIVE
 
-	mock_client.messages.create.assert_called_once()
-	call_kwargs = mock_client.messages.create.call_args.kwargs
-	assert call_kwargs["model"] == "claude-sonnet-4-20250514"
-	assert call_kwargs["max_tokens"] == 2000
+	assert mock_client.messages.create.call_count == 2
+	# First call is researcher reasoning (Sonnet, 4096 tokens)
+	first_call = mock_client.messages.create.call_args_list[0].kwargs
+	assert first_call["model"] == "claude-sonnet-4-20250514"
+	assert first_call["max_tokens"] == 4096
 
 
 @pytest.mark.asyncio

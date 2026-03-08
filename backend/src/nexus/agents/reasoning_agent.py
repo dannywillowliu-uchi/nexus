@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import anthropic
 
@@ -311,7 +312,11 @@ async def generate_research_brief(
 
 
 def _extract_sections(narrative: str) -> dict[str, str]:
-	"""Extract named sections from the researcher narrative."""
+	"""Extract named sections from the researcher narrative.
+
+	Handles variations like '## 1. BIOLOGICAL PLAUSIBILITY', '**Biological Plausibility**',
+	'1) biological plausibility', etc.
+	"""
 	section_headers = [
 		"BIOLOGICAL PLAUSIBILITY",
 		"STRENGTH OF EVIDENCE",
@@ -325,11 +330,11 @@ def _extract_sections(narrative: str) -> dict[str, str]:
 	current_lines: list[str] = []
 
 	for line in lines:
-		stripped = line.strip()
-		# Check if this line is a section header (e.g., "1. BIOLOGICAL PLAUSIBILITY" or "## 1. BIOLOGICAL PLAUSIBILITY")
+		# Normalize: strip markdown markers, numbers, punctuation
+		normalized = re.sub(r"^[\s#*\d.\-\u2013\u2014)]+", "", line).strip().upper()
 		matched = False
 		for header in section_headers:
-			if header in stripped.upper():
+			if header in normalized:
 				if current_key:
 					sections[current_key] = "\n".join(current_lines).strip()
 				current_key = header.lower().replace(" ", "_")
