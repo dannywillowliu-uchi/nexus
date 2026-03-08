@@ -531,6 +531,7 @@ async def run_pipeline(
 						"novelty": brief.confidence.novelty,
 					},
 					"suggested_validation": brief.suggested_validation,
+					"researcher_narrative": brief.researcher_narrative,
 				}
 				result.research_briefs.append(brief_dict)
 				if i < len(result.scored_hypotheses):
