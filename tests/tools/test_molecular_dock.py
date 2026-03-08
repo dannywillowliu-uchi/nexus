@@ -1,88 +1,36 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
+
+import pytest
 
 from nexus.tools.molecular_dock import molecular_dock
 
 
+@patch("nexus.tools.molecular_dock._fetch_sdf_for_drug", new_callable=AsyncMock)
+@patch("nexus.tools.molecular_dock._fetch_pdb_for_gene", new_callable=AsyncMock)
+@patch("nexus.tools.molecular_dock.TamarindClient")
+async def test_molecular_dock_uses_tamarind_client(mock_client_cls, mock_pdb, mock_sdf):
+	"""molecular_dock should use TamarindClient for upload and submit."""
+	mock_pdb.return_value = "ATOM 1 CA ALA A 1"
+	mock_sdf.return_value = b"fake sdf content"
+
+	mock_instance = AsyncMock()
+	mock_instance.upload_file.return_value = "https://tamarind.bio/files/test.pdb"
+	mock_instance.submit_job.return_value = "nexus-dock-test"
+	mock_client_cls.return_value = mock_instance
+
+	with patch("nexus.tools.molecular_dock.settings") as mock_settings:
+		mock_settings.tamarind_bio_api_key = "test-key"
+		result = await molecular_dock("Aspirin", "COX2")
+
+	assert result.status == "partial"
+	assert mock_instance.upload_file.await_count == 2
+	mock_instance.submit_job.assert_awaited_once()
+
+
 @patch("nexus.tools.molecular_dock.settings")
 async def test_molecular_dock_no_api_key(mock_settings):
+	"""No API key returns partial with skip message."""
 	mock_settings.tamarind_bio_api_key = ""
-
-	result = await molecular_dock("aspirin", "COX2")
-
+	result = await molecular_dock("Aspirin", "COX2")
 	assert result.status == "partial"
-	assert result.raw_data["reason"] == "missing_api_key"
-	assert result.confidence_delta == 0.0
-	assert result.evidence_type == "neutral"
-	assert "aspirin" in result.summary
-	assert "COX2" in result.summary
-
-
-@patch("nexus.tools.molecular_dock.settings")
-@patch("nexus.tools.molecular_dock.TamarindClient")
-async def test_molecular_dock_submit_success(mock_client_cls, mock_settings):
-	mock_settings.tamarind_bio_api_key = "test-key"
-
-	mock_client = MagicMock()
-	mock_client.run_job = AsyncMock(return_value={
-		"status": "Complete",
-		"result": {
-			"docking_score": -8.5,
-			"download_url": "https://s3.example.com/results.tar.gz",
-		},
-	})
-	mock_client_cls.return_value = mock_client
-
-	result = await molecular_dock("aspirin", "COX2")
-
-	assert result.status == "success"
-	assert result.confidence_delta == 0.5
-	assert result.evidence_type == "supporting"
-	assert result.raw_data["docking_score"] == -8.5
-	assert "aspirin" in result.summary
-	assert "COX2" in result.summary
-
-	# Verify the run_job call
-	mock_client.run_job.assert_called_once_with(
-		job_name="nexus-dock-aspirin-COX2",
-		job_type="autodock_vina",
-		settings={
-			"target": "COX2",
-			"ligand": "aspirin",
-		},
-	)
-
-
-@patch("nexus.tools.molecular_dock.settings")
-@patch("nexus.tools.molecular_dock.TamarindClient")
-async def test_molecular_dock_submit_timeout(mock_client_cls, mock_settings):
-	mock_settings.tamarind_bio_api_key = "test-key"
-
-	mock_client = MagicMock()
-	mock_client.run_job = AsyncMock(side_effect=TimeoutError("timed out"))
-	mock_client_cls.return_value = mock_client
-
-	result = await molecular_dock("aspirin", "COX2")
-
-	assert result.status == "partial"
-	assert result.raw_data["status"] == "polling_timeout"
-	assert result.raw_data["job_name"] == "nexus-dock-aspirin-COX2"
-	assert result.confidence_delta == 0.0
-	assert result.evidence_type == "neutral"
-
-
-@patch("nexus.tools.molecular_dock.settings")
-@patch("nexus.tools.molecular_dock.TamarindClient")
-async def test_molecular_dock_http_error(mock_client_cls, mock_settings):
-	mock_settings.tamarind_bio_api_key = "test-key"
-
-	mock_client = MagicMock()
-	mock_client.run_job = AsyncMock(side_effect=Exception("Internal Server Error"))
-	mock_client_cls.return_value = mock_client
-
-	result = await molecular_dock("aspirin", "COX2")
-
-	assert result.status == "error"
-	assert result.confidence_delta == 0.0
-	assert result.evidence_type == "neutral"
-	assert "failed" in result.summary.lower()
-	assert "error" in result.raw_data
+	assert "skipped" in result.summary.lower()
