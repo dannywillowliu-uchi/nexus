@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
@@ -73,12 +74,122 @@ def _resolve_label(entity_type: str) -> str:
 	return LABEL_MAP.get(entity_type.lower(), "Gene")
 
 
+def _normalize_entity_name(name: str) -> str:
+	"""Normalize entity name for fuzzy matching against PrimeKG."""
+	normalized = name.strip()
+	# Remove Greek letters and their spelled-out forms
+	for greek in ["α", "β", "γ", "δ", "ε", "-alpha", "-beta", "-gamma", "-delta"]:
+		normalized = normalized.replace(greek, "")
+	# Remove phospho- prefix
+	normalized = normalized.replace("phospho-", "").replace("p-", "")
+	return normalized.strip().rstrip("-")
+
+
+async def _resolve_entity_in_graph(entity_name: str, entity_type: str) -> str | None:
+	"""Try to find an existing PrimeKG node matching this entity name.
+
+	Returns the exact PrimeKG node name if found, None otherwise.
+	"""
+	label = _resolve_label(entity_type)
+
+	# 1. Exact match (case-insensitive) on the expected label
+	result = await graph_client.execute_read(
+		f"MATCH (n:{label}) WHERE toLower(n.name) = toLower($name) RETURN n.name LIMIT 1",
+		name=entity_name,
+	)
+	if result:
+		return result[0]["n.name"]
+
+	# 2. Try normalized version (TNF-α → TNF, IL-6 → IL6)
+	normalized = _normalize_entity_name(entity_name)
+	if normalized and normalized != entity_name:
+		result = await graph_client.execute_read(
+			f"MATCH (n:{label}) WHERE toLower(n.name) = toLower($name) RETURN n.name LIMIT 1",
+			name=normalized,
+		)
+		if result:
+			return result[0]["n.name"]
+
+	# 3. Try common variations
+	variations = [
+		entity_name.upper(),
+		entity_name.replace("-", ""),
+		entity_name.split("(")[0].strip(),
+		entity_name.split("/")[0].strip(),
+	]
+	# Base name before first dash/space (e.g. "TNF-alpha" → "TNF")
+	base = re.split(r"[-\s]", entity_name)[0]
+	if base and base != entity_name:
+		variations.append(base)
+
+	for var in variations:
+		if var and var != entity_name:
+			result = await graph_client.execute_read(
+				f"MATCH (n:{label}) WHERE toLower(n.name) = toLower($name) RETURN n.name LIMIT 1",
+				name=var,
+			)
+			if result:
+				return result[0]["n.name"]
+
+	# 4. Any label — exact match (entity type from extraction might be wrong)
+	result = await graph_client.execute_read(
+		"MATCH (n) WHERE toLower(n.name) = toLower($name) RETURN n.name LIMIT 1",
+		name=entity_name,
+	)
+	if result:
+		return result[0]["n.name"]
+
+	# 5. Any label — normalized
+	if normalized and normalized != entity_name:
+		result = await graph_client.execute_read(
+			"MATCH (n) WHERE toLower(n.name) = toLower($name) RETURN n.name LIMIT 1",
+			name=normalized,
+		)
+		if result:
+			return result[0]["n.name"]
+
+	return None
+
+
 async def merge_triples_to_graph(triples: list[Triple]) -> int:
-	"""Merge extracted triples into Neo4j as LITERATURE_ASSOCIATION edges."""
+	"""Merge extracted triples into Neo4j as LITERATURE_ASSOCIATION edges.
+
+	Before creating nodes, resolves entity names against existing PrimeKG nodes
+	using fuzzy matching (e.g. "TNF-α" → "TNF", "IL-6" → "IL6").
+	"""
 	count = 0
 	for triple in triples:
 		s_label = _resolve_label(triple.subject_type)
 		o_label = _resolve_label(triple.object_type)
+
+		# Resolve entities against existing graph nodes
+		resolved_subject = await _resolve_entity_in_graph(triple.subject, triple.subject_type)
+		resolved_object = await _resolve_entity_in_graph(triple.object, triple.object_type)
+
+		subject_name = resolved_subject or triple.subject
+		object_name = resolved_object or triple.object
+
+		if resolved_subject and resolved_subject != triple.subject:
+			logger.info("Resolved '%s' → existing node '%s'", triple.subject, resolved_subject)
+		if resolved_object and resolved_object != triple.object:
+			logger.info("Resolved '%s' → existing node '%s'", triple.object, resolved_object)
+
+		# Use the resolved label if we matched an existing node
+		if resolved_subject:
+			s_match = await graph_client.execute_read(
+				"MATCH (n {name: $name}) RETURN labels(n)[0] AS label LIMIT 1",
+				name=resolved_subject,
+			)
+			if s_match:
+				s_label = s_match[0]["label"]
+		if resolved_object:
+			o_match = await graph_client.execute_read(
+				"MATCH (n {name: $name}) RETURN labels(n)[0] AS label LIMIT 1",
+				name=resolved_object,
+			)
+			if o_match:
+				o_label = o_match[0]["label"]
+
 		query = (
 			f"MERGE (s:{s_label} {{name: $subject}}) "
 			f"ON CREATE SET s.node_type = $subject_type, s.source = 'literature_extraction' "
@@ -93,9 +204,9 @@ async def merge_triples_to_graph(triples: list[Triple]) -> int:
 		try:
 			result = await graph_client.execute_write(
 				query,
-				subject=triple.subject,
+				subject=subject_name,
 				subject_type=triple.subject_type,
-				object=triple.object,
+				object=object_name,
 				object_type=triple.object_type,
 				predicate=triple.predicate,
 				confidence=triple.confidence,
@@ -103,7 +214,7 @@ async def merge_triples_to_graph(triples: list[Triple]) -> int:
 			)
 			count += len(result)
 		except Exception:
-			logger.warning("Failed to merge triple: %s -> %s", triple.subject, triple.object)
+			logger.warning("Failed to merge triple: %s -> %s", subject_name, object_name)
 	return count
 
 
