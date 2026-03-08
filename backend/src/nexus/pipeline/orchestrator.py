@@ -234,6 +234,21 @@ async def run_pipeline(
 			branch_futures.append(branch_task)
 			await _emit(on_event, "branch", {"entity": lit_cp.pivot_entity, "reason": lit_cp.reason})
 
+		# --- Entity resolution ---
+		resolved = await graph_client.resolve_entity(source_name, entity_type=start_type)
+		if resolved.match_method != "unresolved":
+			logger.info("Resolved '%s' -> '%s' (method=%s)", source_name, resolved.name, resolved.match_method)
+			source_name = resolved.name
+			start_type = resolved.type
+			result.start_entity = source_name
+			result.start_type = start_type
+		await _emit(on_event, "entity_resolved", {
+			"original": resolved.original_query,
+			"resolved": resolved.name,
+			"type": resolved.type,
+			"method": resolved.match_method,
+		})
+
 		# --- Graph stage ---
 		result.step = PipelineStep.GRAPH
 		await _emit(on_event, "stage_start", {"stage": "graph", "entity": source_name})

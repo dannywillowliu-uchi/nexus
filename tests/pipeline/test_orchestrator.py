@@ -4,7 +4,20 @@ from nexus.agents.literature.agent import LiteratureResult
 from nexus.agents.literature.extract import Triple
 from nexus.checkpoint.models import CheckpointDecision, CheckpointResult
 from nexus.graph.abc import ABCHypothesis
+from nexus.graph.client import ResolvedEntity
 from nexus.pipeline.orchestrator import PipelineStep, score_hypothesis, run_pipeline
+
+
+def _mock_resolve(name: str = "Alzheimer", resolved_name: str = "Alzheimer", entity_type: str = "Disease"):
+	"""Create an AsyncMock for graph_client.resolve_entity that returns a passthrough resolution."""
+	mock = AsyncMock(return_value=ResolvedEntity(
+		name=resolved_name,
+		type=entity_type,
+		identifier="",
+		match_method="exact",
+		original_query=name,
+	))
+	return mock
 
 
 MOCK_TRIPLES = [
@@ -100,15 +113,17 @@ def test_score_hypothesis_mechanism():
 	assert scored["hypothesis_type"] == "mechanism"
 
 
+@patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge):
+async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
 	mock_merge.return_value = 2
+	mock_gc.resolve_entity = _mock_resolve()
 
 	result = await run_pipeline(
 		query="Alzheimer disease treatments",
@@ -126,11 +141,12 @@ async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge):
 	mock_merge.assert_awaited_once()
 
 
+@patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge):
+async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
 	pivot_result = CheckpointResult(
 		decision=CheckpointDecision.PIVOT,
 		reason="APOE is more specific",
@@ -144,6 +160,7 @@ async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge):
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_merge.return_value = 2
+	mock_gc.resolve_entity = _mock_resolve(name="APOE", resolved_name="APOE", entity_type="Gene")
 
 	result = await run_pipeline(
 		query="Alzheimer disease",
@@ -160,15 +177,17 @@ async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge):
 	assert result.errors == []
 
 
+@patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge):
+async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
 	mock_merge.return_value = 2
+	mock_gc.resolve_entity = _mock_resolve()
 
 	events: list[tuple[str, dict]] = []
 
@@ -186,14 +205,16 @@ async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge):
 	assert "stage_start" in event_types
 	assert "stage_complete" in event_types
 	assert "triples_merged" in event_types
+	assert "entity_resolved" in event_types
 	assert "pipeline_complete" in event_types
 
 
+@patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge):
+async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
 	"""Checkpoint after graph stage returns PIVOT, triggering re-run."""
 	graph_pivot = CheckpointResult(
 		decision=CheckpointDecision.PIVOT,
@@ -208,6 +229,7 @@ async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge)
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_merge.return_value = 2
+	mock_gc.resolve_entity = _mock_resolve()
 
 	result = await run_pipeline(
 		query="Alzheimer",
