@@ -71,10 +71,10 @@ class SessionRequest(BaseModel):
 	"""Request to start a hypothesis generation session."""
 
 	query: str
-	disease_area: str
-	start_entity: str
-	start_type: str
-	target_types: list[str]
+	disease_area: str | None = None
+	start_entity: str | None = None
+	start_type: str = "Disease"
+	target_types: list[str] | None = None
 	max_hypotheses: int = 10
 	reasoning_depth: str = "quick"
 	max_pivots: int = 3

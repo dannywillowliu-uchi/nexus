@@ -1,4 +1,4 @@
-"""Generalized Swanson ABC traversal engine for literature-based discovery.
+"""Swanson ABC traversal engine for PrimeKG-based drug repurposing.
 
 Given a source entity A, finds intermediate entities B and target entities C
 where A-B and B-C relationships exist but no direct A-C connection is known.
@@ -32,24 +32,36 @@ class ABCHypothesis:
 
 
 # Relationship type weights for path strength scoring.
-# Covers actual Neo4j graph labels (from Hetionet seed) plus literature edges.
+# Covers actual PrimeKG Neo4j labels plus literature edges.
 RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	# Drug-Disease (high signal for drug repurposing)
 	"INDICATION": 1.0,
-	"OFF_LABEL_USE": 0.85,
+	"OFF_LABEL_USE": 0.9,
 	"CONTRAINDICATION": 0.4,
 	# Drug-Gene/Protein (pharmacological)
-	"TARGET": 0.9,
-	"ENZYME": 0.7,
-	"TRANSPORTER": 0.65,
-	"CARRIER": 0.6,
+	"TARGET": 0.95,
+	"ENZYME": 0.75,
+	"TRANSPORTER": 0.7,
+	"CARRIER": 0.7,
 	# Disease-Gene (genomic association)
 	"ASSOCIATED_WITH": 0.85,
-	# Disease-Phenotype
+	# Phenotype edges
+	"PHENOTYPE_PROTEIN": 0.8,
 	"PHENOTYPE_PRESENT": 0.7,
 	# Literature-derived edges
 	"LITERATURE_EDGE": 0.75,
-	"LITERATURE_ASSOCIATION": 0.7,
+	"LITERATURE_ASSOCIATION": 0.8,
+	# PrimeKG protein-protein interactions
+	"PROTEIN_PROTEIN": 0.8,
+	# PrimeKG ontology edges
+	"DISEASE_PROTEIN": 0.85,
+	"BIOPROCESS_PROTEIN": 0.7,
+	"PATHWAY_PROTEIN": 0.75,
+	"MOLFUNC_PROTEIN": 0.7,
+	"CELLCOMP_PROTEIN": 0.65,
+	"ANATOMY_PROTEIN_PRESENT": 0.7,
+	"ANATOMY_PROTEIN_ABSENT": 0.3,
+	"DRUG_EFFECT": 0.6,
 	# Legacy Hetionet abbreviation forms (kept for compatibility)
 	"TREATS_CtD": 1.0,
 	"PALLIATES_CpD": 0.9,
@@ -77,63 +89,69 @@ RELATIONSHIP_WEIGHTS: dict[str, float] = {
 	"PRESENTS_SpD": 0.7,
 }
 
+# Intermediary type multipliers -- Gene intermediaries are most valuable
+# for drug repurposing hypotheses
+INTERMEDIARY_MULTIPLIERS: dict[str, float] = {
+	"Gene": 1.5,
+	"Anatomy": 1.3,
+	"Phenotype": 1.0,
+	"BiologicalProcess": 0.7,
+	"Pathway": 0.7,
+	"MolecularFunction": 0.7,
+	"CellularComponent": 0.7,
+}
+
+HUB_DEGREE_THRESHOLD = 200
+
 
 def rel_weight(rel_type: str) -> float:
 	"""Return the weight for a relationship type, defaulting to 0.5 for unknown types."""
 	return RELATIONSHIP_WEIGHTS.get(rel_type, 0.5)
 
 
-def compute_novelty(path_count: int) -> float:
-	"""Compute a novelty score based on the number of connecting paths.
-
-	Fewer paths suggest a more novel (less obvious) connection.
-	Very few paths (<=2) may indicate noise, so scored slightly below the sweet spot.
-	"""
+def compute_novelty(path_count: int, b_degree: int = 0) -> float:
+	"""Compute novelty score. Hub nodes (degree > 200) get a 0.5x penalty."""
 	if path_count <= 2:
-		return 0.9
+		score = 0.9
 	elif path_count <= 5:
-		return 0.95
+		score = 0.95
 	elif path_count <= 10:
-		return 0.8
+		score = 0.8
 	elif path_count <= 20:
-		return 0.6
+		score = 0.6
 	else:
-		return 0.4
+		score = 0.4
+
+	if b_degree > HUB_DEGREE_THRESHOLD:
+		score *= 0.5
+
+	return score
 
 
 async def find_abc_hypotheses(
 	source_name: str,
 	source_type: str = "Disease",
-	target_type: str = "Compound",
+	target_type: str = "Drug",
 	max_results: int = 20,
 	exclude_known: bool = True,
 ) -> list[ABCHypothesis]:
-	"""Find ABC hypotheses connecting a source entity to target entities via intermediaries.
+	"""Find ABC hypotheses via two-hop PrimeKG traversal through Gene intermediaries.
 
-	Uses a two-hop graph traversal: A -[r1]- B -[r2]- C where no direct A-C
-	connection exists (when exclude_known=True).
-
-	Args:
-		source_name: Name of the source entity (e.g. a disease name).
-		source_type: Node label of the source (default "Disease").
-		target_type: Node label of the target (default "Compound").
-		max_results: Maximum number of hypotheses to return.
-		exclude_known: If True, exclude target entities already directly connected to source.
-
-	Returns:
-		List of ABCHypothesis objects sorted by path_count descending.
+	Core drug repurposing query: Drug-[TARGET|CARRIER|ENZYME|TRANSPORTER]-Gene-[ASSOCIATED_WITH|LITERATURE_ASSOCIATION]-Disease.
+	Always excludes known INDICATION edges when exclude_known=True.
 	"""
 	exclude_clause = ""
 	if exclude_known:
-		exclude_clause = "AND NOT (a)-[]-(c)"
+		exclude_clause = "AND NOT (a)-[:INDICATION]-(c)"
 
 	query = f"""
-		MATCH (a:{source_type} {{name: $source_name}})-[r1]-(b)-[r2]-(c:{target_type})
-		WHERE a <> c AND b <> c AND b <> a
+		MATCH (a:{source_type})-[r1]-(b:Gene)-[r2]-(c:{target_type})
+		WHERE a.name =~ $source_pattern
+		AND a <> c AND b <> c AND b <> a
 		{exclude_clause}
 		WITH a, c,
 			collect(DISTINCT {{
-				b_id: coalesce(b.identifier, elementId(b)),
+				b_id: toString(coalesce(b.primekg_index, b.identifier, elementId(b))),
 				b_name: coalesce(b.name, ''),
 				b_type: labels(b)[0],
 				ab_rel: type(r1),
@@ -141,10 +159,10 @@ async def find_abc_hypotheses(
 			}}) AS intermediaries,
 			count(DISTINCT b) AS path_count
 		RETURN
-			coalesce(a.identifier, elementId(a)) AS a_id,
+			toString(coalesce(a.primekg_index, a.identifier, elementId(a))) AS a_id,
 			a.name AS a_name,
 			labels(a)[0] AS a_type,
-			coalesce(c.identifier, elementId(c)) AS c_id,
+			toString(coalesce(c.primekg_index, c.identifier, elementId(c))) AS c_id,
 			c.name AS c_name,
 			labels(c)[0] AS c_type,
 			intermediaries,
@@ -153,9 +171,11 @@ async def find_abc_hypotheses(
 		LIMIT $max_results
 	"""
 
+	source_pattern = f"(?i).*{source_name}.*"
+
 	records = await graph_client.execute_read(
 		query,
-		source_name=source_name,
+		source_pattern=source_pattern,
 		max_results=max_results,
 	)
 
@@ -165,7 +185,6 @@ async def find_abc_hypotheses(
 		path_count = row["path_count"]
 		novelty = compute_novelty(path_count)
 
-		# Find the best intermediary by path strength
 		best_strength = 0.0
 		best_intermediary: dict = intermediaries[0] if intermediaries else {}
 
@@ -173,6 +192,9 @@ async def find_abc_hypotheses(
 			ab_w = rel_weight(inter.get("ab_rel", ""))
 			bc_w = rel_weight(inter.get("bc_rel", ""))
 			strength = math.sqrt(ab_w * bc_w)
+			b_type = inter.get("b_type", "")
+			multiplier = INTERMEDIARY_MULTIPLIERS.get(b_type, 1.0)
+			strength *= multiplier
 			if strength > best_strength:
 				best_strength = strength
 				best_intermediary = inter
@@ -199,32 +221,26 @@ async def find_abc_hypotheses(
 
 
 async def find_drug_repurposing_candidates(
-	disease_name: str,
+	drug_name: str,
 	max_results: int = 20,
 ) -> list[ABCHypothesis]:
-	"""Find potential drug repurposing candidates for a disease.
-
-	Convenience wrapper around find_abc_hypotheses with Disease -> Compound.
-	"""
+	"""Find diseases a drug might treat via shared gene targets (Drug->Gene->Disease)."""
 	return await find_abc_hypotheses(
-		source_name=disease_name,
-		source_type="Disease",
-		target_type="Compound",
+		source_name=drug_name,
+		source_type="Drug",
+		target_type="Disease",
 		max_results=max_results,
 	)
 
 
-async def find_mechanism_hypotheses(
+async def find_comorbidity(
 	disease_name: str,
 	max_results: int = 20,
 ) -> list[ABCHypothesis]:
-	"""Find potential biological mechanisms underlying a disease.
-
-	Convenience wrapper around find_abc_hypotheses with Disease -> BiologicalProcess.
-	"""
+	"""Find related diseases via shared genes (Disease->Gene->Disease)."""
 	return await find_abc_hypotheses(
 		source_name=disease_name,
 		source_type="Disease",
-		target_type="BiologicalProcess",
+		target_type="Disease",
 		max_results=max_results,
 	)
