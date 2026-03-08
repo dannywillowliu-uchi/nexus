@@ -1,11 +1,14 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from nexus.agents.literature.agent import LiteratureResult
 from nexus.agents.literature.extract import Triple
 from nexus.checkpoint.models import CheckpointDecision, CheckpointResult
 from nexus.graph.abc import ABCHypothesis
 from nexus.graph.client import ResolvedEntity
 from nexus.pipeline.orchestrator import PipelineStep, score_hypothesis, run_pipeline
+from nexus.tools.schema import ToolResponse
 
 
 def _mock_resolve_multi(name: str = "Alzheimer", resolved_name: str = "Alzheimer", entity_type: str = "Disease"):
@@ -113,12 +116,15 @@ def test_score_hypothesis_mechanism():
 	assert scored["hypothesis_type"] == "mechanism"
 
 
+@patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock, return_value=[])
+@patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock, side_effect=Exception("skip"))
+@patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock, return_value=[])
 @patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc, _mock_sum, _mock_brief, _mock_val):
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
@@ -141,12 +147,15 @@ async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge, mock_
 	mock_merge.assert_awaited_once()
 
 
+@patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock, return_value=[])
+@patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock, side_effect=Exception("skip"))
+@patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock, return_value=[])
 @patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc, _mock_sum, _mock_brief, _mock_val):
 	pivot_result = CheckpointResult(
 		decision=CheckpointDecision.PIVOT,
 		reason="APOE is more specific",
@@ -177,12 +186,15 @@ async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge, 
 	assert result.errors == []
 
 
+@patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock, return_value=[])
+@patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock, side_effect=Exception("skip"))
+@patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock, return_value=[])
 @patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc, _mock_sum, _mock_brief, _mock_val):
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
@@ -209,12 +221,15 @@ async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge, mo
 	assert "pipeline_complete" in event_types
 
 
+@patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock, return_value=[])
+@patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock, side_effect=Exception("skip"))
+@patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock, return_value=[])
 @patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc, _mock_sum, _mock_brief, _mock_val):
 	"""Checkpoint after graph stage returns PIVOT, triggering re-run."""
 	graph_pivot = CheckpointResult(
 		decision=CheckpointDecision.PIVOT,
@@ -245,12 +260,15 @@ async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge,
 	assert mock_lit.await_count == 2
 
 
+@patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock, return_value=[])
+@patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock, side_effect=Exception("skip"))
+@patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock, return_value=[])
 @patch("nexus.pipeline.orchestrator.graph_client")
 @patch("nexus.pipeline.orchestrator.merge_triples_to_graph", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock)
 @patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock)
-async def test_run_pipeline_branch_bounded(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc):
+async def test_run_pipeline_branch_bounded(mock_lit, mock_abc, mock_cp, mock_merge, mock_gc, _mock_sum, _mock_brief, _mock_val):
 	"""BRANCH decision runs lightweight graph-only branches, max 3 concurrent."""
 	branch_result = CheckpointResult(
 		decision=CheckpointDecision.BRANCH,
@@ -279,3 +297,50 @@ async def test_run_pipeline_branch_bounded(mock_lit, mock_abc, mock_cp, mock_mer
 	assert result.step == PipelineStep.COMPLETED
 	assert len(result.branches) >= 1
 	assert len(result.scored_hypotheses) >= 1
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_validation_uses_planner():
+	"""Validation stage calls run_validation_plan for each top hypothesis."""
+	with patch("nexus.pipeline.orchestrator.run_literature_agent", new_callable=AsyncMock) as mock_lit, \
+		 patch("nexus.pipeline.orchestrator.graph_client") as mock_graph, \
+		 patch("nexus.pipeline.orchestrator.run_checkpoint", new_callable=AsyncMock) as mock_cp, \
+		 patch("nexus.pipeline.orchestrator.find_abc_hypotheses", new_callable=AsyncMock) as mock_abc, \
+		 patch("nexus.pipeline.orchestrator.generate_quick_summaries", new_callable=AsyncMock) as mock_sum, \
+		 patch("nexus.pipeline.orchestrator.generate_research_brief", new_callable=AsyncMock) as mock_brief, \
+		 patch("nexus.pipeline.orchestrator.run_validation_plan", new_callable=AsyncMock) as mock_validate:
+
+		mock_lit.return_value = LiteratureResult(papers=[], triples=[], errors=[])
+		mock_cp.return_value = CheckpointResult(
+			decision=CheckpointDecision.CONTINUE,
+			reason="continue",
+			confidence=0.8,
+		)
+		mock_graph.resolve_entity_multi = AsyncMock(return_value=[])
+
+		mock_abc.return_value = [
+			ABCHypothesis(
+				a_id="D1", a_name="RA", a_type="Disease",
+				b_id="G1", b_name="TNF", b_type="Gene",
+				c_id="C1", c_name="Drug1", c_type="Drug",
+				ab_relationship="ASSOCIATES", bc_relationship="TARGET",
+				path_count=3, novelty_score=0.9,
+			)
+		]
+		mock_sum.return_value = ["summary1"]
+		mock_brief.side_effect = Exception("skip brief")
+
+		mock_validate.return_value = [
+			ToolResponse(
+				status="success",
+				confidence_delta=0.3,
+				evidence_type="supporting",
+				summary="diffdock completed",
+				raw_data={"tool_type": "diffdock"},
+			)
+		]
+
+		result = await run_pipeline("test query", start_entity="RA", start_type="Disease")
+
+	assert mock_validate.called
+	assert len(result.validation_results) > 0
