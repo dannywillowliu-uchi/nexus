@@ -1,0 +1,169 @@
+{
+	"alzheimer": {
+		"disease_area": "Alzheimer's disease",
+		"cell_lines": [
+			{
+				"name": "SH-SY5Y",
+				"atcc_number": "CRL-2266",
+				"organism": "Homo sapiens",
+				"tissue": "Bone marrow / neuroblastoma",
+				"culture_medium": "DMEM/F-12",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 15000,
+				"doubling_time_hours": 48,
+				"growth_mode": "adherent",
+				"disease_relevance": "Differentiates into dopaminergic/cholinergic neuron-like cells. Widely used for neurotoxicity, amyloid-beta, and tau studies."
+			}
+		]
+	},
+	"parkinson": {
+		"disease_area": "Parkinson's disease",
+		"cell_lines": [
+			{
+				"name": "SH-SY5Y",
+				"atcc_number": "CRL-2266",
+				"organism": "Homo sapiens",
+				"tissue": "Bone marrow / neuroblastoma",
+				"culture_medium": "DMEM/F-12",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 15000,
+				"doubling_time_hours": 48,
+				"growth_mode": "adherent",
+				"disease_relevance": "Standard model for dopaminergic neuron studies. Differentiate with retinoic acid for mature neuronal phenotype."
+			},
+			{
+				"name": "LUHMES",
+				"atcc_number": "CRL-2927",
+				"organism": "Homo sapiens",
+				"tissue": "Mesencephalon",
+				"culture_medium": "DMEM/F-12 + N2 supplement",
+				"serum": "Serum-free",
+				"seeding_density_cells_per_well": 20000,
+				"doubling_time_hours": 36,
+				"growth_mode": "adherent",
+				"disease_relevance": "Conditionally immortalized human dopaminergic neurons. More physiologically relevant than SH-SY5Y for PD."
+			}
+		]
+	},
+	"diabetes": {
+		"disease_area": "Diabetes mellitus",
+		"cell_lines": [
+			{
+				"name": "INS-1",
+				"atcc_number": "N/A (available from AddexBio C0018009)",
+				"organism": "Rattus norvegicus",
+				"tissue": "Pancreas / insulinoma",
+				"culture_medium": "RPMI 1640",
+				"serum": "10% FBS + 50 uM 2-mercaptoethanol",
+				"seeding_density_cells_per_well": 20000,
+				"doubling_time_hours": 100,
+				"growth_mode": "adherent",
+				"disease_relevance": "Glucose-responsive insulin-secreting beta cell line. Gold standard for insulin secretion studies."
+			},
+			{
+				"name": "HepG2",
+				"atcc_number": "HB-8065",
+				"organism": "Homo sapiens",
+				"tissue": "Liver / hepatocellular carcinoma",
+				"culture_medium": "DMEM",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 10000,
+				"doubling_time_hours": 48,
+				"growth_mode": "adherent",
+				"disease_relevance": "Hepatocyte model for glucose metabolism, insulin signaling, lipid metabolism, and PPAR-gamma activity."
+			}
+		]
+	},
+	"cancer": {
+		"disease_area": "Cancer (general)",
+		"cell_lines": [
+			{
+				"name": "HeLa",
+				"atcc_number": "CCL-2",
+				"organism": "Homo sapiens",
+				"tissue": "Cervix / adenocarcinoma",
+				"culture_medium": "DMEM",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 5000,
+				"doubling_time_hours": 24,
+				"growth_mode": "adherent",
+				"disease_relevance": "Universal cancer cell line. Well-characterized for cytotoxicity screening, apoptosis, and cell cycle studies."
+			},
+			{
+				"name": "MCF7",
+				"atcc_number": "HTB-22",
+				"organism": "Homo sapiens",
+				"tissue": "Breast / adenocarcinoma",
+				"culture_medium": "DMEM",
+				"serum": "10% FBS + 10 ug/mL insulin",
+				"seeding_density_cells_per_well": 8000,
+				"doubling_time_hours": 30,
+				"growth_mode": "adherent",
+				"disease_relevance": "ER-positive breast cancer. Standard model for anti-estrogen drug screening and hormone-responsive cancer studies."
+			}
+		]
+	},
+	"cardiovascular": {
+		"disease_area": "Cardiovascular disease",
+		"cell_lines": [
+			{
+				"name": "HUVEC",
+				"atcc_number": "CRL-1730",
+				"organism": "Homo sapiens",
+				"tissue": "Umbilical vein / endothelial",
+				"culture_medium": "EGM-2 (Lonza CC-3162)",
+				"serum": "2% FBS (included in EGM-2 BulletKit)",
+				"seeding_density_cells_per_well": 10000,
+				"doubling_time_hours": 36,
+				"growth_mode": "adherent",
+				"disease_relevance": "Primary endothelial cells for angiogenesis, endothelial dysfunction, atherosclerosis, and vascular inflammation studies."
+			},
+			{
+				"name": "H9c2",
+				"atcc_number": "CRL-1446",
+				"organism": "Rattus norvegicus",
+				"tissue": "Heart / embryonic myocardium",
+				"culture_medium": "DMEM",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 8000,
+				"doubling_time_hours": 30,
+				"growth_mode": "adherent",
+				"disease_relevance": "Cardiomyoblast line. Differentiates into cardiomyocyte-like cells. Used for cardiotoxicity, ischemia-reperfusion, and cardioprotection studies."
+			}
+		]
+	},
+	"inflammation": {
+		"disease_area": "Inflammatory disease",
+		"cell_lines": [
+			{
+				"name": "THP-1",
+				"atcc_number": "TIB-202",
+				"organism": "Homo sapiens",
+				"tissue": "Peripheral blood / monocyte",
+				"culture_medium": "RPMI 1640",
+				"serum": "10% FBS + 0.05 mM 2-mercaptoethanol",
+				"seeding_density_cells_per_well": 50000,
+				"doubling_time_hours": 35,
+				"growth_mode": "suspension",
+				"disease_relevance": "Monocytic cell line. Differentiate with PMA to macrophages. Standard model for inflammation, cytokine release, and immune response."
+			}
+		]
+	},
+	"autoimmune": {
+		"disease_area": "Autoimmune disease",
+		"cell_lines": [
+			{
+				"name": "Jurkat",
+				"atcc_number": "TIB-152",
+				"organism": "Homo sapiens",
+				"tissue": "Peripheral blood / T-cell leukemia",
+				"culture_medium": "RPMI 1640",
+				"serum": "10% FBS",
+				"seeding_density_cells_per_well": 50000,
+				"doubling_time_hours": 25,
+				"growth_mode": "suspension",
+				"disease_relevance": "T-cell lymphoma. Standard for T-cell activation, signaling, and immunomodulatory compound screening."
+			}
+		]
+	}
+}

@@ -26,6 +26,7 @@ class PipelineStep(Enum):
 	VALIDATION = "validation"
 	VISUALIZATION = "visualization"
 	PROTOCOL = "protocol"
+	EXPERIMENT = "experiment"
 	COMPLETED = "completed"
 	FAILED = "failed"
 
@@ -43,6 +44,7 @@ class PipelineResult:
 	branches: list = field(default_factory=list)
 	errors: list[str] = field(default_factory=list)
 	checkpoint_log: list[dict] = field(default_factory=list)
+	experiment_results: list[dict] = field(default_factory=list)
 
 
 LABEL_MAP: dict[str, str] = {
@@ -102,13 +104,10 @@ def _fuzzy_entity_match(entity: str, triple_text: str) -> bool:
 	"""Check if an entity name appears in triple text, with partial matching."""
 	entity_lower = entity.lower()
 	text_lower = triple_text.lower()
-	# Exact match
 	if entity_lower == text_lower:
 		return True
-	# Substring match (e.g., "Alzheimer" in "Alzheimer disease")
 	if entity_lower in text_lower or text_lower in entity_lower:
 		return True
-	# Word overlap: if >50% of words match
 	entity_words = set(entity_lower.split())
 	text_words = set(text_lower.split())
 	if entity_words and text_words:
@@ -116,6 +115,31 @@ def _fuzzy_entity_match(entity: str, triple_text: str) -> bool:
 		if len(overlap) / min(len(entity_words), len(text_words)) > 0.5:
 			return True
 	return False
+
+
+async def _update_graph_edge_status(
+	a_name: str,
+	c_name: str,
+	status: str,
+	confidence: float,
+) -> None:
+	"""Update a hypothesized A-C edge in Neo4j with experiment results."""
+	query = """
+		MATCH (a {name: $a_name})-[r]->(c {name: $c_name})
+		WHERE r.is_novel = true
+		SET r.status = $status, r.validation_score = $confidence
+		RETURN r
+	"""
+	try:
+		await graph_client.execute_write(
+			query,
+			a_name=a_name,
+			c_name=c_name,
+			status=status,
+			confidence=confidence,
+		)
+	except Exception:
+		logger.warning("Failed to update graph edge %s -> %s", a_name, c_name)
 
 
 def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:
