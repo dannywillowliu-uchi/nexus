@@ -174,7 +174,7 @@ async def generate_quick_summaries(
 		client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 		message = await client.messages.create(
 			model=MODEL,
-			max_tokens=MAX_TOKENS,
+			max_tokens=SUMMARY_MAX_TOKENS,
 			messages=[{"role": "user", "content": prompt}],
 		)
 
