@@ -162,6 +162,10 @@ def score_hypothesis(abc: ABCHypothesis, triples: list[Triple]) -> dict:
 	# Determine hypothesis type from A/C types
 	a_type = abc.a_type.lower()
 	c_type = abc.c_type.lower()
+	if a_type == "compound":
+		a_type = "drug"
+	if c_type == "compound":
+		c_type = "drug"
 	type_pair = frozenset({a_type, c_type})
 
 	if type_pair == frozenset({"disease", "drug"}):
@@ -311,19 +315,36 @@ async def run_pipeline(
 			await _emit(on_event, "branch", {"entity": lit_cp.pivot_entity, "reason": lit_cp.reason})
 
 		# --- Entity resolution ---
-		resolved = await graph_client.resolve_entity(source_name, entity_type=start_type)
-		if resolved.match_method != "unresolved":
+		candidates = await graph_client.resolve_entity_multi(source_name, entity_type=start_type)
+		if candidates:
+			resolved = candidates[0]
 			logger.info("Resolved '%s' -> '%s' (method=%s)", source_name, resolved.name, resolved.match_method)
+			if len(candidates) > 1:
+				alt_names = [c.name for c in candidates[1:]]
+				logger.info("Alternative matches for '%s': %s", source_name, alt_names)
 			source_name = resolved.name
 			start_type = resolved.type
 			result.start_entity = source_name
 			result.start_type = start_type
-		await _emit(on_event, "entity_resolved", {
-			"original": resolved.original_query,
-			"resolved": resolved.name,
-			"type": resolved.type,
-			"method": resolved.match_method,
-		})
+			await _emit(on_event, "entity_resolved", {
+				"original": resolved.original_query,
+				"resolved": resolved.name,
+				"type": resolved.type,
+				"method": resolved.match_method,
+				"alternatives": [
+					{"name": c.name, "type": c.type, "identifier": c.identifier}
+					for c in candidates[1:]
+				],
+			})
+		else:
+			logger.warning("Could not resolve '%s' in graph", source_name)
+			await _emit(on_event, "entity_resolved", {
+				"original": source_name,
+				"resolved": source_name,
+				"type": start_type,
+				"method": "unresolved",
+				"alternatives": [],
+			})
 
 		# --- Graph stage ---
 		result.step = PipelineStep.GRAPH

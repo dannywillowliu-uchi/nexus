@@ -134,6 +134,8 @@ async def find_abc_hypotheses(
 	target_type: str = "Drug",
 	max_results: int = 20,
 	exclude_known: bool = True,
+	fuzzy: bool = False,
+	preferred_ab_rels: list[str] | None = None,
 ) -> list[ABCHypothesis]:
 	"""Find ABC hypotheses via two-hop PrimeKG traversal through Gene intermediaries.
 
@@ -144,10 +146,20 @@ async def find_abc_hypotheses(
 	if exclude_known:
 		exclude_clause = "AND NOT (a)-[:INDICATION]-(c)"
 
+	if fuzzy:
+		source_filter = "WHERE a.name =~ $source_pattern"
+	else:
+		source_filter = "WHERE a.name = $source_name"
+
+	ab_rel_clause = ""
+	if preferred_ab_rels:
+		ab_rel_clause = "AND type(r1) IN $preferred_ab_rels"
+
 	query = f"""
 		MATCH (a:{source_type})-[r1]-(b:Gene)-[r2]-(c:{target_type})
-		WHERE a.name =~ $source_pattern
+		{source_filter}
 		AND a <> c AND b <> c AND b <> a
+		{ab_rel_clause}
 		{exclude_clause}
 		WITH a, c,
 			collect(DISTINCT {{
@@ -171,13 +183,15 @@ async def find_abc_hypotheses(
 		LIMIT $max_results
 	"""
 
-	source_pattern = f"(?i).*{source_name}.*"
+	params: dict = {"max_results": max_results}
+	if fuzzy:
+		params["source_pattern"] = f"(?i).*{source_name}.*"
+	else:
+		params["source_name"] = source_name
+	if preferred_ab_rels:
+		params["preferred_ab_rels"] = preferred_ab_rels
 
-	records = await graph_client.execute_read(
-		query,
-		source_pattern=source_pattern,
-		max_results=max_results,
-	)
+	records = await graph_client.execute_read(query, **params)
 
 	hypotheses: list[ABCHypothesis] = []
 	for row in records:
@@ -223,19 +237,27 @@ async def find_abc_hypotheses(
 async def find_drug_repurposing_candidates(
 	drug_name: str,
 	max_results: int = 20,
+	fuzzy: bool = False,
+	preferred_ab_rels: list[str] | None = None,
 ) -> list[ABCHypothesis]:
 	"""Find diseases a drug might treat via shared gene targets (Drug->Gene->Disease)."""
+	if preferred_ab_rels is None:
+		preferred_ab_rels = ["TARGET", "INDICATION", "ASSOCIATED_WITH", "DISEASE_PROTEIN"]
 	return await find_abc_hypotheses(
 		source_name=drug_name,
 		source_type="Drug",
 		target_type="Disease",
 		max_results=max_results,
+		fuzzy=fuzzy,
+		preferred_ab_rels=preferred_ab_rels,
 	)
 
 
 async def find_comorbidity(
 	disease_name: str,
 	max_results: int = 20,
+	fuzzy: bool = False,
+	preferred_ab_rels: list[str] | None = None,
 ) -> list[ABCHypothesis]:
 	"""Find related diseases via shared genes (Disease->Gene->Disease)."""
 	return await find_abc_hypotheses(
@@ -243,4 +265,6 @@ async def find_comorbidity(
 		source_type="Disease",
 		target_type="Disease",
 		max_results=max_results,
+		fuzzy=fuzzy,
+		preferred_ab_rels=preferred_ab_rels,
 	)

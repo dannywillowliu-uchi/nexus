@@ -1,8 +1,7 @@
 """
-Load PrimeKG into Neo4j Aura (free tier: 400K relationship cap).
-Prioritized edge loading for drug repurposing ABC traversal.
+Load PrimeKG into Neo4j with tiered edge loading.
 
-Run: .venv/bin/python scripts/load_primekg.py
+Run: .venv/bin/python scripts/load_primekg.py --tier 2 --no-clear
 """
 import os
 import time
@@ -18,8 +17,6 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
-EDGE_CAP = 395000  # stay under 400K with margin
-
 LABEL_MAP = {
 	'gene/protein': 'Gene',
 	'drug': 'Drug',
@@ -34,18 +31,22 @@ LABEL_MAP = {
 	'exposure': 'Exposure',
 }
 
-# Priority 1: MUST HAVE — Drug-Disease + Drug-Gene pharmacological links
-PRIORITY_1 = ['indication', 'contraindication', 'off-label use', 'drug_protein']
-# drug_protein includes: target, carrier, enzyme, transporter (all Drug→Gene)
+TIER_1 = ['indication', 'contraindication', 'off-label use', 'drug_protein']
+TIER_2 = ['disease_protein']
+TIER_3 = ['protein_protein', 'bioprocess_protein', 'pathway_protein']
+TIER_4 = [
+	'molfunc_protein', 'cellcomp_protein', 'anatomy_protein_present',
+	'anatomy_protein_absent', 'phenotype_protein', 'disease_phenotype_positive',
+	'disease_phenotype_negative', 'drug_drug', 'exposure_protein',
+	'exposure_disease', 'exposure_bioprocess', 'drug_effect',
+]
 
-# Priority 2: CRITICAL for ABC paths — Disease→Gene associations
-PRIORITY_2 = ['disease_protein']
-
-# Priority 3: Load if room remains
-PRIORITY_3 = ['phenotype_protein', 'disease_phenotype_positive', 'disease_phenotype_negative']
-
-# DO NOT LOAD: protein_protein (ppi), drug_drug (synergistic), anatomy_protein_present,
-# pathway_*, bioprocess_*, cellcomp_*, molfunc_*, etc.
+TIERS = {
+	1: TIER_1,
+	2: TIER_1 + TIER_2,
+	3: TIER_1 + TIER_2 + TIER_3,
+	4: TIER_1 + TIER_2 + TIER_3 + TIER_4,
+}
 
 
 def clean_label(node_type: str) -> str:
@@ -56,7 +57,7 @@ def clean_rel_type(relation: str) -> str:
 	return str(relation).upper().replace(' ', '_').replace('-', '_').replace('/', '_')
 
 
-def load_edges_for_relation(session, kg_subset, total_loaded, label=""):
+def load_edges_for_relation(session, kg_subset, label=""):
 	"""Load edges for a filtered subset. Returns count of edges loaded."""
 	if len(kg_subset) == 0:
 		return 0
@@ -70,18 +71,9 @@ def load_edges_for_relation(session, kg_subset, total_loaded, label=""):
 	batch_size = 5000
 
 	for (x_label, y_label, rel_type), group in kg_subset.groupby(['x_label', 'y_label', 'rel_type']):
-		remaining = EDGE_CAP - total_loaded - loaded
-		if remaining <= 0:
-			print(f"    *** HIT CAP at {total_loaded + loaded} edges ***")
-			return loaded
-
 		records = group[['x_index', 'y_index']].copy()
 		records['x_index'] = records['x_index'].astype(int)
 		records['y_index'] = records['y_index'].astype(int)
-
-		# Truncate if we'd exceed cap
-		if len(records) > remaining:
-			records = records.head(remaining)
 
 		record_list = records.to_dict('records')
 
@@ -101,18 +93,28 @@ def load_edges_for_relation(session, kg_subset, total_loaded, label=""):
 	return loaded
 
 
-def load_graph():
-	print("Reading PrimeKG CSV...")
+def load_graph(tier: int = 4, clear: bool = True, data_path: str = "data/primekg/kg.csv"):
+	print(f"Reading PrimeKG from {data_path}...")
 	t0 = time.time()
-	kg = pd.read_csv('data/primekg/kg.csv', low_memory=False)
+
+	if not os.path.exists(data_path) and not data_path.endswith(".gz"):
+		gz_path = data_path + ".gz"
+		if os.path.exists(gz_path):
+			print(f"  CSV not found, using {gz_path}")
+			data_path = gz_path
+
+	kg = pd.read_csv(data_path, low_memory=False)
 	print(f"Loaded {len(kg)} edges in {time.time() - t0:.1f}s")
 
-	with driver.session() as session:
-		# Step 1: Clear existing data
-		print("\nClearing existing graph...")
-		session.run("MATCH (n) DETACH DELETE n")
+	relations = TIERS[tier]
 
-		# Step 2: Create constraints and indexes
+	with driver.session() as session:
+		if clear:
+			print("\nClearing existing graph...")
+			session.run("MATCH (n) DETACH DELETE n")
+		else:
+			print("\nSkipping graph clear (--no-clear)")
+
 		print("Creating indexes...")
 		node_types = set(kg['x_type'].unique()) | set(kg['y_type'].unique())
 		for nt in node_types:
@@ -128,7 +130,6 @@ def load_graph():
 			except Exception as e:
 				print(f"  Name index for {label}: {e}")
 
-		# Step 3: Collect unique nodes
 		print("\nCollecting unique nodes...")
 		t0 = time.time()
 
@@ -146,7 +147,6 @@ def load_graph():
 
 		print(f"Found {len(all_nodes)} unique nodes in {time.time() - t0:.1f}s")
 
-		# Step 4: Batch create nodes
 		print("\nCreating nodes...")
 		t0 = time.time()
 		batch_size = 5000
@@ -165,49 +165,22 @@ def load_graph():
 
 		print(f"All nodes created in {time.time() - t0:.1f}s")
 
-		# Step 5: Prioritized edge loading
 		print(f"\n{'='*60}")
-		print(f"PRIORITIZED EDGE LOADING (cap: {EDGE_CAP})")
+		print(f"TIERED EDGE LOADING (tier {tier}: {len(relations)} relation types)")
 		print(f"{'='*60}")
 		total_loaded = 0
 
-		# --- PRIORITY 1: Drug-Disease + Drug-Gene ---
-		print(f"\n--- PRIORITY 1: Drug edges (indication, contraindication, off-label, target/carrier/enzyme/transporter) ---")
-		for rel in PRIORITY_1:
-			if total_loaded >= EDGE_CAP:
-				break
+		for rel in relations:
 			subset = kg[kg['relation'] == rel]
-			print(f"  Loading '{rel}': {len(subset)} edges available...")
-			count = load_edges_for_relation(session, subset, total_loaded)
+			print(f"  Loading '{rel}': {len(subset)} edges...")
+			count = load_edges_for_relation(session, subset)
 			total_loaded += count
-			print(f"    Loaded: {count} | Running total: {total_loaded}/{EDGE_CAP}")
-
-		# --- PRIORITY 2: Disease→Gene (THE critical ABC link) ---
-		print(f"\n--- PRIORITY 2: Disease→Gene associations ---")
-		if total_loaded < EDGE_CAP:
-			subset = kg[kg['relation'] == 'disease_protein']
-			print(f"  Loading 'disease_protein': {len(subset)} edges available...")
-			count = load_edges_for_relation(session, subset, total_loaded)
-			total_loaded += count
-			print(f"    Loaded: {count} | Running total: {total_loaded}/{EDGE_CAP}")
-
-		# --- PRIORITY 3: Phenotype links ---
-		print(f"\n--- PRIORITY 3: Phenotype edges (if room) ---")
-		for rel in PRIORITY_3:
-			if total_loaded >= EDGE_CAP:
-				print(f"  Cap reached, skipping '{rel}'")
-				break
-			subset = kg[kg['relation'] == rel]
-			print(f"  Loading '{rel}': {len(subset)} edges available...")
-			count = load_edges_for_relation(session, subset, total_loaded)
-			total_loaded += count
-			print(f"    Loaded: {count} | Running total: {total_loaded}/{EDGE_CAP}")
+			print(f"    Loaded: {count} | Running total: {total_loaded}")
 
 		print(f"\n{'='*60}")
 		print(f"TOTAL EDGES LOADED: {total_loaded}")
 		print(f"{'='*60}")
 
-	# Step 6: Verify
 	print("\nVerifying...")
 	with driver.session() as session:
 		node_count = session.run("MATCH (n) RETURN count(n) as c").single()['c']
@@ -221,7 +194,6 @@ def load_graph():
 		for record in result:
 			print(f"  {record['rel_type']}: {record['count']}")
 
-		# Test demo case: riluzole → ? → melanoma
 		print("\n--- DEMO TEST: Riluzole ABC paths ---")
 		result = session.run("""
 			MATCH (a:Drug)-[r1]-(b:Gene)-[r2]-(c:Disease)
@@ -237,5 +209,11 @@ def load_graph():
 
 
 if __name__ == "__main__":
-	load_graph()
+	import argparse
+	parser = argparse.ArgumentParser(description="Load PrimeKG into Neo4j")
+	parser.add_argument("--tier", type=int, default=4, choices=[1, 2, 3, 4])
+	parser.add_argument("--no-clear", action="store_true")
+	parser.add_argument("--data-path", default="data/primekg/kg.csv")
+	args = parser.parse_args()
+	load_graph(tier=args.tier, clear=not args.no_clear, data_path=args.data_path)
 	driver.close()

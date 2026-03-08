@@ -69,17 +69,12 @@ class GraphClient:
 		records = await self.execute_read("MATCH ()-[r]->() RETURN count(r) AS count")
 		return records[0]["count"]
 
-	async def resolve_entity(self, query: str, entity_type: str | None = None) -> ResolvedEntity:
-		"""Resolve a user-provided entity name to the canonical node name in the graph.
-
-		Tries in order:
-		1. Case-insensitive exact match
-		2. Case-insensitive CONTAINS match (best = shortest name containing query)
-		3. Returns unresolved with the original query
-		"""
+	async def resolve_entity_multi(
+		self, query: str, entity_type: str | None = None, limit: int = 5,
+	) -> list[ResolvedEntity]:
+		"""Resolve a user-provided entity name to multiple candidate nodes."""
 		type_filter = f":{entity_type}" if entity_type else ""
 
-		# 1. Case-insensitive exact match
 		exact_query = f"""
 			MATCH (n{type_filter})
 			WHERE toLower(n.name) = toLower($search_term)
@@ -89,34 +84,41 @@ class GraphClient:
 		records = await self.execute_read(exact_query, search_term=query)
 		if records:
 			r = records[0]
-			return ResolvedEntity(
+			return [ResolvedEntity(
 				name=r["name"],
 				type=r["type"],
 				identifier=r["identifier"],
 				match_method="exact",
 				original_query=query,
-			)
+			)]
 
-		# 2. Case-insensitive CONTAINS match, prefer shortest name (most specific)
 		contains_query = f"""
 			MATCH (n{type_filter})
 			WHERE toLower(n.name) CONTAINS toLower($search_term)
 			RETURN n.name AS name, labels(n)[0] AS type, coalesce(n.identifier, '') AS identifier
 			ORDER BY size(n.name) ASC
-			LIMIT 5
+			LIMIT $limit
 		"""
-		records = await self.execute_read(contains_query, search_term=query)
+		records = await self.execute_read(contains_query, search_term=query, limit=limit)
 		if records:
-			r = records[0]
-			return ResolvedEntity(
-				name=r["name"],
-				type=r["type"],
-				identifier=r["identifier"],
-				match_method="contains",
-				original_query=query,
-			)
+			return [
+				ResolvedEntity(
+					name=r["name"],
+					type=r["type"],
+					identifier=r["identifier"],
+					match_method="contains",
+					original_query=query,
+				)
+				for r in records
+			]
 
-		# 3. Unresolved
+		return []
+
+	async def resolve_entity(self, query: str, entity_type: str | None = None) -> ResolvedEntity:
+		"""Resolve a user-provided entity name to the best canonical node name."""
+		candidates = await self.resolve_entity_multi(query, entity_type=entity_type, limit=5)
+		if candidates:
+			return candidates[0]
 		return ResolvedEntity(
 			name=query,
 			type=entity_type or "Unknown",

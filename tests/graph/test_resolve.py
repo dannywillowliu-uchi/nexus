@@ -120,6 +120,85 @@ class TestResolveEntity:
 		mock_read.assert_called_once()
 
 
+class TestResolveEntityMulti:
+	@pytest.mark.asyncio
+	async def test_exact_match_returns_single(self, client):
+		with patch.object(client, "execute_read", new_callable=AsyncMock) as mock_read:
+			mock_read.return_value = [
+				{"name": "Alzheimer's disease", "type": "Disease", "identifier": "DOID:10652"}
+			]
+			results = await client.resolve_entity_multi("alzheimer's disease", entity_type="Disease")
+
+		assert len(results) == 1
+		assert results[0].match_method == "exact"
+		assert results[0].name == "Alzheimer's disease"
+
+	@pytest.mark.asyncio
+	async def test_contains_returns_multiple(self, client):
+		with patch.object(client, "execute_read", new_callable=AsyncMock) as mock_read:
+			mock_read.side_effect = [
+				[],
+				[
+					{"name": "CDK4 linked melanoma", "type": "Disease", "identifier": "D1"},
+					{"name": "cutaneous melanoma", "type": "Disease", "identifier": "D2"},
+					{"name": "uveal melanoma", "type": "Disease", "identifier": "D3"},
+				],
+			]
+			results = await client.resolve_entity_multi("melanoma", entity_type="Disease")
+
+		assert len(results) == 3
+		assert all(r.match_method == "contains" for r in results)
+		assert results[0].name == "CDK4 linked melanoma"
+		assert results[1].name == "cutaneous melanoma"
+		assert results[2].name == "uveal melanoma"
+
+	@pytest.mark.asyncio
+	async def test_no_match_returns_empty(self, client):
+		with patch.object(client, "execute_read", new_callable=AsyncMock) as mock_read:
+			mock_read.side_effect = [[], []]
+			results = await client.resolve_entity_multi("xyzzy_nonexistent", entity_type="Disease")
+
+		assert results == []
+
+	@pytest.mark.asyncio
+	async def test_limit_parameter(self, client):
+		with patch.object(client, "execute_read", new_callable=AsyncMock) as mock_read:
+			mock_read.side_effect = [
+				[],
+				[
+					{"name": "melanoma A", "type": "Disease", "identifier": "D1"},
+					{"name": "melanoma B", "type": "Disease", "identifier": "D2"},
+				],
+			]
+			results = await client.resolve_entity_multi("melanoma", limit=2)
+
+		assert len(results) == 2
+		contains_call_kwargs = mock_read.call_args_list[1][1]
+		assert contains_call_kwargs["limit"] == 2
+
+	@pytest.mark.asyncio
+	async def test_resolve_entity_delegates_to_multi(self, client):
+		with patch.object(client, "resolve_entity_multi", new_callable=AsyncMock) as mock_multi:
+			mock_multi.return_value = [
+				ResolvedEntity(name="melanoma X", type="Disease", identifier="D1", match_method="contains", original_query="melanoma"),
+				ResolvedEntity(name="melanoma Y", type="Disease", identifier="D2", match_method="contains", original_query="melanoma"),
+			]
+			result = await client.resolve_entity("melanoma")
+
+		assert result.name == "melanoma X"
+		mock_multi.assert_awaited_once_with("melanoma", entity_type=None, limit=5)
+
+	@pytest.mark.asyncio
+	async def test_resolve_entity_unresolved_when_multi_empty(self, client):
+		with patch.object(client, "resolve_entity_multi", new_callable=AsyncMock) as mock_multi:
+			mock_multi.return_value = []
+			result = await client.resolve_entity("nothing", entity_type="Disease")
+
+		assert result.match_method == "unresolved"
+		assert result.name == "nothing"
+		assert result.type == "Disease"
+
+
 class TestResolvedEntityDataclass:
 	def test_fields(self):
 		entity = ResolvedEntity(

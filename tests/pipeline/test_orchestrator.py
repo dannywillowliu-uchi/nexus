@@ -8,15 +8,15 @@ from nexus.graph.client import ResolvedEntity
 from nexus.pipeline.orchestrator import PipelineStep, score_hypothesis, run_pipeline
 
 
-def _mock_resolve(name: str = "Alzheimer", resolved_name: str = "Alzheimer", entity_type: str = "Disease"):
-	"""Create an AsyncMock for graph_client.resolve_entity that returns a passthrough resolution."""
-	mock = AsyncMock(return_value=ResolvedEntity(
+def _mock_resolve_multi(name: str = "Alzheimer", resolved_name: str = "Alzheimer", entity_type: str = "Disease"):
+	"""Create an AsyncMock for graph_client.resolve_entity_multi that returns a single candidate."""
+	mock = AsyncMock(return_value=[ResolvedEntity(
 		name=resolved_name,
 		type=entity_type,
 		identifier="",
 		match_method="exact",
 		original_query=name,
-	))
+	)])
 	return mock
 
 
@@ -123,7 +123,7 @@ async def test_run_pipeline_basic(mock_lit, mock_abc, mock_cp, mock_merge, mock_
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
 	mock_merge.return_value = 2
-	mock_gc.resolve_entity = _mock_resolve()
+	mock_gc.resolve_entity_multi = _mock_resolve_multi()
 
 	result = await run_pipeline(
 		query="Alzheimer disease treatments",
@@ -160,7 +160,7 @@ async def test_run_pipeline_with_pivot(mock_lit, mock_abc, mock_cp, mock_merge, 
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_merge.return_value = 2
-	mock_gc.resolve_entity = _mock_resolve(name="APOE", resolved_name="APOE", entity_type="Gene")
+	mock_gc.resolve_entity_multi = _mock_resolve_multi(name="APOE", resolved_name="APOE", entity_type="Gene")
 
 	result = await run_pipeline(
 		query="Alzheimer disease",
@@ -187,7 +187,7 @@ async def test_run_pipeline_on_event(mock_lit, mock_abc, mock_cp, mock_merge, mo
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_cp.return_value = CONTINUE_RESULT
 	mock_merge.return_value = 2
-	mock_gc.resolve_entity = _mock_resolve()
+	mock_gc.resolve_entity_multi = _mock_resolve_multi()
 
 	events: list[tuple[str, dict]] = []
 
@@ -229,7 +229,7 @@ async def test_run_pipeline_graph_pivot(mock_lit, mock_abc, mock_cp, mock_merge,
 	mock_lit.return_value = MOCK_LIT_RESULT
 	mock_abc.return_value = [MOCK_HYPOTHESIS]
 	mock_merge.return_value = 2
-	mock_gc.resolve_entity = _mock_resolve()
+	mock_gc.resolve_entity_multi = _mock_resolve_multi()
 
 	result = await run_pipeline(
 		query="Alzheimer",
