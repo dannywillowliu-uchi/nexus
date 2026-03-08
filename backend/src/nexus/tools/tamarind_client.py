@@ -87,12 +87,18 @@ class TamarindClient:
 				resp.raise_for_status()
 				data = resp.json()
 
+				# API returns indexed keys ("0", "1", ...) or "jobs" list
 				jobs = data.get("jobs", [])
+				if not jobs:
+					# Try indexed format: {"0": {...}, "statuses": {...}}
+					for key in sorted(data.keys()):
+						if key.isdigit() and isinstance(data[key], dict):
+							jobs.append(data[key])
 				if not jobs:
 					continue
 
 				job = jobs[0]
-				status = job.get("status", "")
+				status = job.get("status", job.get("JobStatus", ""))
 
 				if status == "Complete":
 					return job
@@ -152,7 +158,7 @@ class TamarindClient:
 			"x-api-key": self._api_key,
 			"Content-Type": "application/octet-stream",
 		}
-		async with httpx.AsyncClient(timeout=120.0) as client:
+		async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
 			resp = await client.put(
 				f"{self._base_url}/upload/{filename}",
 				content=content,
@@ -160,8 +166,10 @@ class TamarindClient:
 				headers=headers,
 			)
 			resp.raise_for_status()
-			data = resp.json()
-			return data.get("fileUrl", data.get("signedUrl", ""))
+			if resp.text.strip():
+				data = resp.json()
+				return data.get("fileUrl", data.get("signedUrl", filename))
+			return filename
 
 	async def list_job_types(self) -> list[str]:
 		"""Fetch available job types from the Tamarind Bio API."""
