@@ -13,14 +13,30 @@ from nexus.tools.registry import TOOL_REGISTRY
 from nexus.tools.schema import ToolResponse
 
 TOOL_STRATEGIES: dict[str, list[str]] = {
-	"drug_repurposing": ["compound_lookup", "molecular_dock", "literature_validate"],
+	"drug_repurposing": ["compound_lookup", "predict_structure", "dock_compound", "predict_properties", "literature_validate"],
 	"mechanism": ["pathway_overlap", "expression_correlate", "literature_validate"],
-	"target_discovery": ["protein_interaction", "expression_correlate", "literature_validate"],
+	"target_discovery": ["protein_interaction", "predict_structure", "expression_correlate", "literature_validate"],
+	"drug_interaction": ["compound_lookup", "dock_compound", "predict_properties", "literature_validate"],
+	"comorbidity": ["pathway_overlap", "literature_validate", "expression_correlate"],
+	"connection": ["literature_validate", "pathway_overlap", "protein_interaction"],
 }
 
 SYSTEM_PROMPT = """You are a validation agent for biomedical hypotheses. You decide which tool to call next to validate or refute a hypothesis.
 
 Available tools: {tools}
+
+Tool descriptions:
+- literature_validate: Search scientific literature for evidence supporting or contradicting the hypothesis.
+- compound_lookup: Look up compound information (structure, properties, known targets) from public databases.
+- pathway_overlap: Check for shared biological pathways between entities.
+- protein_interaction: Query protein-protein interaction networks.
+- expression_correlate: Correlate gene/protein expression patterns across conditions.
+- molecular_dock: Legacy docking tool (compound name + protein name via AutoDock Vina).
+- predict_structure: Predict protein 3D structure from amino acid sequence (methods: esmfold, alphafold, chai, boltz). Args: protein_sequence, method.
+- dock_compound: Dock a compound (SMILES) against a protein target (methods: autodock_vina, diffdock, gnina). Args: compound_smiles, protein_name, method.
+- predict_properties: Predict molecular properties (solubility, thermostability, immunogenicity). Args: sequence_or_smiles, properties.
+- batch_screen: Screen multiple compounds against a target and return top hits. Args: compounds, protein_target, method, top_n.
+- generate_protocol: Generate an experimental protocol for wet-lab validation.
 
 Recommended tool order for this hypothesis type ({hypothesis_type}): {strategy}
 
