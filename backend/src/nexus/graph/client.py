@@ -32,16 +32,20 @@ class GraphClient:
 	async def execute_read(self, query: str, **params: object) -> list[dict]:
 		"""Run a read transaction and return results as list of dicts."""
 		async with self.driver.session() as session:
-			result = await session.run(query, params)
-			records = await result.data()
-			return records
+			async def _work(tx):
+				result = await tx.run(query, params)
+				records = await result.fetch(10000)
+				return [record.data() for record in records]
+			return await session.execute_read(_work)
 
 	async def execute_write(self, query: str, **params: object) -> list[dict]:
 		"""Run a write transaction and return results as list of dicts."""
 		async with self.driver.session() as session:
-			result = await session.run(query, params)
-			records = await result.data()
-			return records
+			async def _work(tx):
+				result = await tx.run(query, params)
+				records = await result.fetch(10000)
+				return [record.data() for record in records]
+			return await session.execute_write(_work)
 
 	async def node_count(self) -> int:
 		"""Return count of all nodes in the graph."""
