@@ -6,7 +6,6 @@ import {
   Search,
   Activity,
   Rss,
-  GitBranch,
   LayoutDashboard,
   Cpu,
   Home,
@@ -17,7 +16,6 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/query", label: "Query", icon: Search },
   { href: "/feed", label: "Feed", icon: Rss },
-  { href: "/graph", label: "Graph", icon: GitBranch },
   { href: "/capabilities", label: "Capabilities", icon: Cpu },
 ];
 
