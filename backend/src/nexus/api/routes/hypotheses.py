@@ -7,29 +7,28 @@ router = APIRouter()
 
 @router.get("/hypotheses/{hypothesis_id}")
 async def get_hypothesis(hypothesis_id: str):
-	# Search events for this hypothesis (by Event.hypothesis_id field)
-	events = event_store.get_by_hypothesis(hypothesis_id)
-	if events:
-		# Return the last (most enriched) event
-		latest = events[-1]
-		return {
-			"hypothesis_id": hypothesis_id,
-			"status": "found",
-			**(latest.output_data or {}),
-		}
-
-	# Fallback: scan output_data for matching hypothesis_id
-	# Return the LAST match (most enriched version)
-	last_match = None
+	# Find the last hypothesis_scored event with this ID (most enriched version)
+	last_scored = None
 	for e in event_store.events:
 		if e.output_data and e.output_data.get("hypothesis_id") == hypothesis_id:
-			last_match = e
-	if last_match:
+			if e.event_type == "hypothesis_scored":
+				last_scored = e
+
+	if last_scored:
 		return {
 			"hypothesis_id": hypothesis_id,
 			"status": "found",
-			**(last_match.output_data or {}),
+			**(last_scored.output_data or {}),
 		}
+
+	# Fallback: any event with this hypothesis_id in output_data
+	for e in reversed(event_store.events):
+		if e.output_data and e.output_data.get("hypothesis_id") == hypothesis_id:
+			return {
+				"hypothesis_id": hypothesis_id,
+				"status": "found",
+				**e.output_data,
+			}
 
 	return {
 		"hypothesis_id": hypothesis_id,
