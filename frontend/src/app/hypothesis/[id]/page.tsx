@@ -4,6 +4,7 @@ import { useEffect, useState, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { getHypothesis, getResearchOutput } from "@/lib/api";
@@ -72,6 +73,7 @@ interface HypothesisData {
   evidence_chain?: EvidenceItem[];
   research_brief?: ResearchBrief | string;
   experiment_status?: string;
+  experiment_protocol?: string;
 }
 
 interface VisualAsset {
@@ -124,6 +126,27 @@ function formatMarkdownBody(text: string): string {
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>')
+    .replace(/\n{2,}/g, "</p><p>")
+    .replace(/\n/g, "<br/>");
+}
+
+/**
+ * Markdown-to-HTML for experiment protocol documents.
+ * Content comes from our own pipeline (trusted), not user input.
+ */
+function formatProtocolMarkdown(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/^### (.+)$/gm, '<h3 class="mt-4 mb-2 text-base font-semibold">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="mt-6 mb-2 text-lg font-semibold">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="mt-6 mb-3 text-xl font-bold">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, '<code class="rounded bg-slate-100 px-1 py-0.5 text-xs font-mono">$1</code>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-6 list-decimal mb-1">$2</li>')
+    .replace(/^- (.+)$/gm, '<li class="ml-6 list-disc mb-1">$1</li>')
     .replace(/\n{2,}/g, "</p><p>")
     .replace(/\n/g, "<br/>");
 }
@@ -573,16 +596,18 @@ export default function HypothesisPage({
         </section>
       )}
 
-      {/* Experiment Status */}
+      {/* Experiment Protocol */}
       {data.experiment_status && (
         <>
           <Separator className="my-8" />
-          <section>
-            <Card className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
-              <CardHeader>
-                <CardTitle className="text-base">Experiment Status</CardTitle>
-              </CardHeader>
-              <CardContent>
+          <section className="mb-12">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="border-l-4 border-l-cyan-500 pl-4">
+                <h2 className="text-xl font-semibold text-slate-800">
+                  Experimental Protocol
+                </h2>
+              </div>
+              <div className="flex items-center gap-3">
                 <Badge
                   className={
                     data.experiment_status === "completed"
@@ -594,8 +619,47 @@ export default function HypothesisPage({
                 >
                   {data.experiment_status}
                 </Badge>
-              </CardContent>
-            </Card>
+                {data.experiment_protocol && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const blob = new Blob([data.experiment_protocol!], {
+                        type: "text/markdown",
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `protocol-${id}.md`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Download Protocol
+                  </Button>
+                )}
+              </div>
+            </div>
+            {data.experiment_protocol ? (
+              <Card className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
+                <CardContent className="pt-6">
+                  <div
+                    className="prose prose-sm max-w-none prose-headings:text-slate-800 prose-p:text-slate-600 prose-li:text-slate-600 prose-strong:text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html: formatProtocolMarkdown(data.experiment_protocol),
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="rounded-xl shadow-sm">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-slate-400">
+                    No protocol document available for this experiment.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </section>
         </>
       )}

@@ -378,6 +378,8 @@ def _build_hypothesis_event(sh: dict) -> dict:
 		payload["evidence_chain"] = evidence_chain
 	if sh.get("experiment_status"):
 		payload["experiment_status"] = sh["experiment_status"]
+	if sh.get("experiment_protocol"):
+		payload["experiment_protocol"] = sh["experiment_protocol"]
 
 	return payload
 
@@ -912,6 +914,46 @@ Be specific with numbers. Use realistic cell lines, IC50 values, and binding ene
 					"hypothesis_title": top_hyp.get("title", ""),
 					"lab_data": lab_data,
 				})
+
+				# Generate formatted experimental protocol document
+				await _emit(on_event, "progress", {
+					"stage": "experiment",
+					"message": "Generating experimental protocol document...",
+				})
+
+				protocol_prompt = f"""You are a scientific protocol writer. Generate a formal, detailed experimental protocol document for the following cloud lab experiment. Write it as a professional lab protocol that could be submitted to Strateos or any automated cloud laboratory.
+
+Hypothesis: {top_hyp.get("title", "")}
+Disease Area: {disease_area}
+Cell Line: {lab_data.get("cell_line", "N/A")}
+Protocol Summary: {lab_data.get("protocol_summary", "")}
+Concentrations: {lab_data.get("concentrations_tested", "")}
+IC50 Result: {lab_data.get("ic50_value", "")}
+Key Findings: {lab_data.get("key_findings", "")}
+
+Tool Results:
+{chr(10).join(f"- {tr.get('tool', '')}: {tr.get('result', '')}" for tr in lab_data.get("tool_results", []))}
+
+Write a complete protocol document in Markdown with these sections:
+1. **Title** - Descriptive experiment title
+2. **Objective** - What this experiment validates
+3. **Materials** - Compounds, cell lines, reagents, plates
+4. **Procedure** - Step-by-step protocol (numbered steps)
+5. **Instrument Configuration** - Plate reader settings, incubation parameters
+6. **Data Analysis** - How results are analyzed (IC50 curve fitting, etc.)
+7. **Results Summary** - Key findings from this experiment
+8. **Conclusions** - Interpretation and next steps
+
+Be specific with volumes (uL), concentrations (uM), temperatures (C), and timepoints (hours). This should read like a real experimental protocol."""
+
+				protocol_msg = await client.messages.create(
+					model="claude-haiku-4-5-20251001",
+					max_tokens=2000,
+					messages=[{"role": "user", "content": protocol_prompt}],
+				)
+				protocol_text = protocol_msg.content[0].text
+
+				top_hyp["experiment_protocol"] = protocol_text
 
 				await _emit(on_event, "progress", {
 					"stage": "experiment",

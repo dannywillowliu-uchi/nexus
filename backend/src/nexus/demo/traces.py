@@ -57,6 +57,46 @@ _DEMO_1_HYP_1 = {
 		},
 	],
 	"experiment_status": "completed",
+	"experiment_protocol": """# Dose-Response Viability Assay: Riluzole vs A375 Melanoma Cells
+
+## Objective
+Validate the hypothesis that riluzole suppresses melanoma cell proliferation via mGluR1 antagonism by measuring dose-dependent cytotoxicity in A375 melanoma cells.
+
+## Materials
+- **Compound:** Riluzole (Sigma-Aldrich R116, MW 234.2 g/mol), 10 mM stock in DMSO
+- **Cell Line:** A375 human melanoma (ATCC CRL-1619), passage 5-15
+- **Culture Medium:** DMEM + 10% FBS + 1% pen/strep
+- **Plates:** Corning 96-well flat-bottom, tissue culture treated (Cat# 3596)
+- **Reagents:** CellTiter-Glo 2.0 (Promega G9241), DMSO vehicle control
+
+## Procedure
+1. Seed A375 cells at 5,000 cells/well in 100 uL complete medium
+2. Incubate 24 hours at 37C, 5% CO2 for cell attachment
+3. Prepare 8-point serial dilution of riluzole: 100, 50, 25, 10, 5, 1, 0.5, 0.1 uM
+4. Add 100 uL of 2x drug dilutions to wells (final DMSO < 0.5%)
+5. Include vehicle control (0.1% DMSO) and untreated wells (n=3 per condition)
+6. Incubate 72 hours at 37C, 5% CO2
+7. Equilibrate CellTiter-Glo reagent to room temperature (30 min)
+8. Add 100 uL CellTiter-Glo to each well
+9. Mix on orbital shaker for 2 minutes, incubate 10 minutes at RT
+
+## Instrument Configuration
+- **Plate Reader:** BioTek Synergy H4, luminescence mode
+- **Read:** Endpoint luminescence, 1 second integration time
+- **Temperature:** Room temperature (22-25C)
+
+## Data Analysis
+- Normalize raw luminescence to vehicle control (100% viability)
+- Fit 4-parameter logistic curve using GraphPad Prism
+- Calculate IC50 with 95% confidence interval
+- Minimum R-squared > 0.95 for valid curve fit
+
+## Results Summary
+Riluzole demonstrated dose-dependent cytotoxicity against A375 melanoma cells with an IC50 of 4.2 uM (95% CI: 3.1-5.7 uM). Maximum inhibition of 89% was observed at 100 uM. Vehicle control showed no significant toxicity.
+
+## Conclusions
+The sub-10 uM IC50 confirms riluzole's anti-melanoma activity at pharmacologically achievable concentrations. These results support the mGluR1 antagonism mechanism and align with published Phase 0 clinical data. Recommended next steps: combination study with BRAF inhibitor vemurafenib and mGluR1 knockdown confirmation experiment.
+""",
 }
 
 _DEMO_1_HYP_2 = {
@@ -115,6 +155,47 @@ _DEMO_2_HYP_1 = {
 		},
 	],
 	"experiment_status": "completed",
+	"experiment_protocol": """# Dose-Response Viability Assay: Erlotinib vs U87-MG Glioblastoma Cells
+
+## Objective
+Validate the hypothesis that erlotinib inhibits EGFR-amplified glioblastoma cell growth via EGFRvIII targeting, leveraging its partial blood-brain barrier penetrance.
+
+## Materials
+- **Compound:** Erlotinib HCl (Selleckchem S1023, MW 393.4 g/mol), 10 mM stock in DMSO
+- **Cell Line:** U87-MG human glioblastoma (ATCC HTB-14), passage 8-20
+- **Culture Medium:** EMEM + 10% FBS + 1% pen/strep
+- **Plates:** Corning 96-well flat-bottom, tissue culture treated (Cat# 3596)
+- **Reagents:** MTT (Sigma M2128), DMSO for solubilization
+
+## Procedure
+1. Seed U87-MG cells at 8,000 cells/well in 100 uL complete medium
+2. Incubate 24 hours at 37C, 5% CO2 for cell attachment
+3. Prepare 8-point serial dilution of erlotinib: 100, 50, 25, 10, 5, 1, 0.5, 0.1 uM
+4. Add 100 uL of 2x drug dilutions to wells (final DMSO < 0.5%)
+5. Include vehicle control (0.1% DMSO) and untreated wells (n=4 per condition)
+6. Incubate 72 hours at 37C, 5% CO2
+7. Add 20 uL MTT solution (5 mg/mL in PBS) to each well
+8. Incubate 4 hours at 37C
+9. Remove supernatant, add 150 uL DMSO to dissolve formazan crystals
+10. Shake 15 minutes on orbital shaker
+
+## Instrument Configuration
+- **Plate Reader:** BioTek Synergy H4, absorbance mode
+- **Wavelength:** 570 nm (reference: 630 nm)
+- **Temperature:** Room temperature (22-25C)
+
+## Data Analysis
+- Subtract background (630 nm) from signal (570 nm)
+- Normalize to vehicle control (100% viability)
+- Fit 4-parameter logistic curve using GraphPad Prism
+- Calculate IC50 with 95% confidence interval
+
+## Results Summary
+Erlotinib showed dose-dependent growth inhibition of U87-MG glioblastoma cells with IC50 = 12.3 uM (95% CI: 9.8-15.4 uM). Maximum inhibition of 76% observed at 100 uM. Results consistent with EGFR pathway dependence in this cell line.
+
+## Conclusions
+The IC50 of 12.3 uM is achievable in CNS tissue given erlotinib's partial BBB penetration (CSF:plasma ratio 5-10%). Combined with DiffDock docking data (binding energy -9.2 kcal/mol to EGFRvIII), these results support further investigation in patient-derived EGFR-amplified GBM organoids.
+""",
 }
 
 _DEMO_3_HYP_1 = {
@@ -154,6 +235,49 @@ _DEMO_3_HYP_1 = {
 		},
 	],
 	"experiment_status": "completed",
+	"experiment_protocol": """# Dose-Response Viability Assay: Metformin vs PANC-1 Pancreatic Cancer Cells
+
+## Objective
+Validate the hypothesis that metformin inhibits pancreatic cancer cell growth through AMPK activation and mTOR pathway suppression, and determine dose-response relationship.
+
+## Materials
+- **Compound:** Metformin HCl (Sigma PHR1084, MW 165.6 g/mol), 500 mM stock in sterile water
+- **Working Stock:** 50 mM in complete medium (diluted from 500 mM, required due to pipetting limits)
+- **Cell Line:** PANC-1 human pancreatic carcinoma (ATCC CRL-1469), passage 10-25
+- **Culture Medium:** DMEM + 10% FBS + 1% pen/strep
+- **Plates:** Corning 96-well flat-bottom, tissue culture treated (Cat# 3596)
+- **Reagents:** MTT (Sigma M2128), DMSO for solubilization
+
+## Procedure
+1. Seed PANC-1 cells at 6,000 cells/well in 100 uL complete medium
+2. Incubate 24 hours at 37C, 5% CO2 for cell attachment
+3. Prepare working stock: dilute 500 mM metformin to 50 mM in complete medium
+4. Prepare 8-point serial dilution from working stock: 25, 12.5, 6.25, 3.125, 1.56, 0.78, 0.39, 0.195 mM
+5. Add 100 uL of 2x drug dilutions to wells
+6. Include vehicle control (water) and untreated wells (n=4 per condition)
+7. Incubate 72 hours at 37C, 5% CO2
+8. Add 20 uL MTT solution (5 mg/mL in PBS) to each well
+9. Incubate 4 hours at 37C
+10. Remove supernatant, add 150 uL DMSO to dissolve formazan crystals
+11. Shake 15 minutes on orbital shaker
+
+## Instrument Configuration
+- **Plate Reader:** BioTek Synergy H4, absorbance mode
+- **Wavelength:** 570 nm (reference: 630 nm)
+- **Temperature:** Room temperature (22-25C)
+
+## Data Analysis
+- Subtract background (630 nm) from signal (570 nm)
+- Normalize to vehicle control (100% viability)
+- Fit 4-parameter logistic curve using GraphPad Prism
+- Calculate IC50 with 95% confidence interval
+
+## Results Summary
+Metformin showed dose-dependent growth inhibition of PANC-1 cells with IC50 = 8.7 mM (95% CI: 6.9-11.0 mM). This concentration is within physiologically achievable plasma levels at standard therapeutic doses (peak ~20 mM in portal circulation). Note: initial protocol submission rejected by Strateos due to 500 mM stock exceeding pipettable concentration limit; resolved by adding intermediate dilution step.
+
+## Conclusions
+The IC50 of 8.7 mM confirms metformin's anti-proliferative activity against pancreatic cancer cells at clinically relevant concentrations. The AMPK-mTOR mechanism is consistent with published literature. Recommended next steps: combination study with gemcitabine (standard of care) and western blot confirmation of AMPK phosphorylation.
+""",
 }
 
 
