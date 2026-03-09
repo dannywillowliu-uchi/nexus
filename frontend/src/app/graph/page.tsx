@@ -143,10 +143,14 @@ export default function GraphPage() {
       setGraphData({ nodes, links });
       setFeed(nodes);
 
-      // Zoom to fit after data loads
+      // Re-measure container and zoom to fit after data loads
       setTimeout(() => {
+        if (graphContainerRef.current) {
+          const rect = graphContainerRef.current.getBoundingClientRect();
+          setGraphDimensions({ width: rect.width, height: rect.height });
+        }
         fgRef.current?.zoomToFit(400, 60);
-      }, 500);
+      }, 300);
     } catch {
       setGraphData(null);
     }
@@ -331,19 +335,17 @@ export default function GraphPage() {
       {/* Main Content: Graph + Sidebar */}
       <div className="flex min-h-0 flex-1 gap-4">
         {/* Graph Canvas */}
-        <div className="flex-[3]">
-          <Card className="h-full rounded-xl">
-            <CardContent className="relative h-full p-0">
-              <div
-                ref={graphContainerRef}
-                className="h-full w-full overflow-hidden rounded-lg"
-                style={{
-                  background:
-                    "radial-gradient(circle, #e2e8f0 1px, transparent 1px)",
-                  backgroundSize: "20px 20px",
-                  backgroundColor: "#f8fafc",
-                }}
-              >
+        <div className="flex-[3] min-h-0">
+          <div
+            ref={graphContainerRef}
+            className="h-full w-full overflow-hidden rounded-xl ring-1 ring-slate-200"
+            style={{
+              background:
+                "radial-gradient(circle, #e2e8f0 1px, transparent 1px)",
+              backgroundSize: "20px 20px",
+              backgroundColor: "#f8fafc",
+            }}
+          >
                 {!graphData && !loading && (
                   <div className="flex h-full items-center justify-center">
                     <p className="text-sm text-slate-400">
@@ -384,9 +386,7 @@ export default function GraphPage() {
                     maxZoom={8}
                   />
                 )}
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
 
         {/* Right Sidebar */}
