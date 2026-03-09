@@ -536,6 +536,9 @@ async def run_pipeline(
 		result.hypotheses = all_hypotheses
 		triples_for_scoring = lit_result.triples if lit_result else []
 		scored = [score_hypothesis(h, triples_for_scoring) for h in all_hypotheses]
+		# Assign stable hypothesis IDs
+		for i, sh in enumerate(scored):
+			sh["hypothesis_id"] = f"{session_id}-hyp-{i}" if session_id else f"hyp-{i}"
 		result.scored_hypotheses = scored
 
 		await _emit(on_event, "stage_complete", {
@@ -823,6 +826,7 @@ async def run_pipeline(
 		await _emit(on_event, "stage_complete", {"stage": "experiment"})
 
 		result.step = PipelineStep.COMPLETED
+		top_hyp_id = result.scored_hypotheses[0].get("hypothesis_id") if result.scored_hypotheses else None
 		await _emit(on_event, "pipeline_complete", {
 			"hypotheses": len(result.scored_hypotheses),
 			"briefs": len(result.research_briefs),
@@ -830,6 +834,7 @@ async def run_pipeline(
 			"experiments": len(result.experiment_results),
 			"pivots": len(result.pivots),
 			"branches": len(result.branches),
+			"hypothesis_id": top_hyp_id,
 		})
 
 	except Exception as exc:
