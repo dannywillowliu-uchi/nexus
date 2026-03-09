@@ -32,7 +32,6 @@ async def start_demo(request: DemoRequest):
 				event_id=str(uuid.uuid4()),
 				session_id=session_id,
 				event_type=event_data["type"],
-				hypothesis_id=event_data.get("hypothesis_id"),
 				output_data=event_data,
 			)
 			event_store.add(event)
