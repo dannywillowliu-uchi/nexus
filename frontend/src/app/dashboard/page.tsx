@@ -352,15 +352,12 @@ function StreamMode({
       <div className="mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-slate-800">Agent Reasoning</h1>
-          {!completed ? (
-            <Badge className="bg-teal-100 text-teal-700">Live</Badge>
-          ) : (
+          {completed ? (
             <Badge className="bg-emerald-100 text-emerald-700">Complete</Badge>
-          )}
-          {isReplicated && (
-            <Badge variant="outline" className="border-slate-300 text-slate-500 text-[10px] font-mono">
-              Replicated
-            </Badge>
+          ) : isReplicated ? (
+            <Badge variant="outline" className="border-slate-300 text-slate-500 font-mono">Replicated</Badge>
+          ) : (
+            <Badge className="bg-teal-100 text-teal-700">Live</Badge>
           )}
         </div>
         <p className="mt-1 text-sm text-slate-500">{query}</p>
@@ -560,7 +557,7 @@ export default function DashboardPage() {
         disease_area: queryText,
         start_entity: queryText,
         start_type: "Disease",
-        target_types: ["Gene", "Compound"],
+        target_types: ["Gene", "Drug"],
       });
       if (result.session_id) {
         setSessionId(result.session_id);

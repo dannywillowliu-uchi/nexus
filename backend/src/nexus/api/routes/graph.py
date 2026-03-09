@@ -5,6 +5,15 @@ from nexus.pipeline.orchestrator import _resolve_label
 
 router = APIRouter()
 
+# Auto-pick target type based on source type for meaningful traversals
+_TARGET_FOR_SOURCE: dict[str, str] = {
+	"Drug": "Disease",
+	"Disease": "Drug",
+	"Gene": "Disease",
+	"Pathway": "Disease",
+	"BiologicalProcess": "Disease",
+}
+
 
 @router.get("/graph/explore")
 async def explore_graph(
@@ -14,10 +23,13 @@ async def explore_graph(
 ):
 	try:
 		resolved_type = _resolve_label(entity_type)
+		target_type = _TARGET_FOR_SOURCE.get(resolved_type, "Drug")
 		hypotheses = await find_abc_hypotheses(
 			source_name=entity_name,
 			source_type=resolved_type,
+			target_type=target_type,
 			max_results=depth * 10,
+			fuzzy=True,
 		)
 		nodes = []
 		edges = []
