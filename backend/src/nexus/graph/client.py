@@ -22,7 +22,9 @@ class GraphClient:
 		self._driver: AsyncDriver | None = None
 
 	async def connect(self) -> None:
-		"""Create an async Neo4j driver connection."""
+		"""Create an async Neo4j driver connection. Skips if URI not configured."""
+		if not settings.neo4j_uri:
+			return
 		self._driver = AsyncGraphDatabase.driver(
 			settings.neo4j_uri,
 			auth=(settings.neo4j_username, settings.neo4j_password),

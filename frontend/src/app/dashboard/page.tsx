@@ -6,20 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { createSession, streamSessionEvents } from "@/lib/api";
+import { createSession, startDemo, streamSessionEvents } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 
 // -- Types --
 
-type PipelineStage = "Literature" | "Graph" | "Reasoning" | "Validation" | "Complete";
+type PipelineStage = "Literature" | "Graph" | "Reasoning" | "Validation" | "Experiment" | "Complete";
 
-const STAGES: PipelineStage[] = ["Literature", "Graph", "Reasoning", "Validation", "Complete"];
+const STAGES: PipelineStage[] = ["Literature", "Graph", "Reasoning", "Validation", "Experiment", "Complete"];
 
 const STAGE_COLORS: Record<string, string> = {
   Literature: "#F59E0B",
   Graph: "#8B5CF6",
   Reasoning: "#3B82F6",
   Validation: "#10B981",
+  Experiment: "#EC4899",
   Checkpoint: "#F97316",
   Complete: "#10B981",
 };
@@ -84,7 +85,13 @@ function stageBadgeStyle(stage: string): React.CSSProperties {
 
 // -- Components --
 
-function PromptMode({ onSubmit }: { onSubmit: (query: string) => void }) {
+const DEMOS = [
+  { id: 1, label: "ADMET Validation", desc: "Riluzole for melanoma (fast)", query: "drug properties of riluzole for melanoma treatment" },
+  { id: 2, label: "Multi-Tool Discovery", desc: "Glioblastoma repurposing (complex)", query: "novel therapeutic approaches for glioblastoma using repurposed compounds" },
+  { id: 3, label: "Cloud Lab Failure", desc: "Metformin + Strateos error recovery", query: "experimental validation of metformin for pancreatic cancer" },
+];
+
+function PromptMode({ onSubmit, onDemo }: { onSubmit: (query: string) => void; onDemo: (demoId: number, query: string) => void }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +104,8 @@ function PromptMode({ onSubmit }: { onSubmit: (query: string) => void }) {
     if (query.trim()) onSubmit(query.trim());
   }
 
+  const DEMO_BORDER_COLORS = ["border-l-teal-500", "border-l-violet-500", "border-l-amber-500"];
+
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-6">
       <motion.div
@@ -105,10 +114,10 @@ function PromptMode({ onSubmit }: { onSubmit: (query: string) => void }) {
         transition={{ duration: 0.5 }}
         className="w-full max-w-2xl text-center"
       >
-        <h1 className="mb-3 text-4xl font-bold tracking-tight text-slate-800">
-          Nexus Discovery
+        <h1 className="mb-2 font-mono text-4xl font-bold tracking-tight text-teal-600">
+          NEXUS
         </h1>
-        <p className="mb-10 text-lg text-slate-500">
+        <p className="mb-10 text-sm text-slate-500">
           Autonomous biological hypothesis generation powered by Swanson ABC traversal.
         </p>
         <form onSubmit={handleSubmit} className="relative">
@@ -118,7 +127,7 @@ function PromptMode({ onSubmit }: { onSubmit: (query: string) => void }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ask Nexus anything..."
-            className="w-full rounded-2xl border border-slate-200 bg-white px-6 py-4 text-lg text-slate-800 shadow-sm outline-none transition-all placeholder:text-slate-400 focus:border-teal-400 focus:ring-4 focus:ring-teal-100"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-6 py-5 text-lg text-slate-800 shadow-md outline-none transition-all placeholder:text-slate-400 focus:border-teal-400 focus:shadow-lg focus:ring-4 focus:ring-teal-100"
           />
           <Button
             type="submit"
@@ -131,6 +140,24 @@ function PromptMode({ onSubmit }: { onSubmit: (query: string) => void }) {
         <p className="mt-4 text-sm text-slate-400">
           Try: &quot;ways to treat melanoma similar to riluzole&quot; or &quot;novel gene targets for Parkinson&apos;s Disease&quot;
         </p>
+
+        <div className="mt-12">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Demo Scenarios
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {DEMOS.map((demo, i) => (
+              <button
+                key={demo.id}
+                onClick={() => onDemo(demo.id, demo.query)}
+                className={`rounded-xl border border-slate-200 border-l-4 ${DEMO_BORDER_COLORS[i]} bg-white px-5 py-4 text-left shadow-sm transition-all hover:shadow-md`}
+              >
+                <span className="text-sm font-medium text-slate-700">{demo.label}</span>
+                <span className="mt-1 block text-xs text-slate-400">{demo.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </motion.div>
     </div>
   );
@@ -141,13 +168,17 @@ function EventCard({ event, index }: { event: StreamEvent; index: number }) {
   const isCheckpoint = event.type === "checkpoint" || !!event.decision;
   const isPivot = event.type === "pivot";
   const isHypothesis = event.type === "hypothesis_scored";
+  const isError = event.type === "experiment_error";
+  const isProgress = event.type === "progress" || event.type === "status_update";
+  const stageColor = STAGE_COLORS[stage] || "#64748B";
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.1) }}
-      className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm"
+      className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${isError ? "border-l-red-500 bg-red-50/30" : ""} ${isProgress ? "opacity-60" : ""}`}
+      style={!isError ? { borderLeftColor: stageColor } : undefined}
     >
       <div className="mb-2 flex items-center justify-between">
         <Badge
@@ -189,6 +220,15 @@ function EventCard({ event, index }: { event: StreamEvent; index: number }) {
           <span className="rounded bg-orange-50 px-2 py-0.5 font-mono text-xs text-orange-700">
             {event.to_entity}
           </span>
+        </div>
+      )}
+
+      {isError && (
+        <div className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-red-600">
+            Error
+          </span>
+          <p className="mt-1 text-xs text-red-700">{event.message}</p>
         </div>
       )}
 
@@ -258,9 +298,9 @@ function PipelineStepper({ currentStage, completed }: { currentStage: PipelineSt
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-white p-3">
+    <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+      <p className="font-mono text-2xl font-bold" style={{ color }}>{value}</p>
     </div>
   );
 }
@@ -272,6 +312,7 @@ function StreamMode({
   completed,
   topHypothesisId,
   query,
+  isReplicated,
 }: {
   events: StreamEvent[];
   stats: LiveStats;
@@ -279,6 +320,7 @@ function StreamMode({
   completed: boolean;
   topHypothesisId: string | null;
   query: string;
+  isReplicated: boolean;
 }) {
   const feedRef = useRef<HTMLDivElement>(null);
   const [relativeNow, setRelativeNow] = useState(0);
@@ -304,7 +346,7 @@ function StreamMode({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="mx-auto max-w-7xl px-6 py-8"
+      className="px-6 py-8"
     >
       {/* Header */}
       <div className="mb-6">
@@ -315,6 +357,11 @@ function StreamMode({
           ) : (
             <Badge className="bg-emerald-100 text-emerald-700">Complete</Badge>
           )}
+          {isReplicated && (
+            <Badge variant="outline" className="border-slate-300 text-slate-500 text-[10px] font-mono">
+              Replicated
+            </Badge>
+          )}
         </div>
         <p className="mt-1 text-sm text-slate-500">{query}</p>
       </div>
@@ -323,7 +370,7 @@ function StreamMode({
       <div className="flex gap-6" style={{ height: "calc(100vh - 12rem)" }}>
         {/* Left panel: Event stream */}
         <div className="flex w-[65%] flex-col">
-          <Card className="flex flex-1 flex-col overflow-hidden">
+          <Card className="flex flex-1 flex-col overflow-hidden rounded-xl shadow-sm">
             <CardHeader className="shrink-0 pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <span>Agent Reasoning Stream</span>
@@ -362,7 +409,7 @@ function StreamMode({
         {/* Right panel: Summary sidebar */}
         <div className="flex w-[35%] flex-col gap-4">
           {/* Pipeline progress */}
-          <Card>
+          <Card className="rounded-xl shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Pipeline Progress</CardTitle>
             </CardHeader>
@@ -372,7 +419,7 @@ function StreamMode({
           </Card>
 
           {/* Live stats */}
-          <Card>
+          <Card className="rounded-xl shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Live Stats</CardTitle>
             </CardHeader>
@@ -393,7 +440,7 @@ function StreamMode({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <Card className="border-emerald-200 bg-emerald-50/50">
+              <Card className="rounded-xl border-emerald-200 bg-emerald-50/50 shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base text-emerald-800">
                     Pipeline Complete
@@ -530,9 +577,31 @@ export default function DashboardPage() {
     }
   }
 
-  if (mode === "prompt") {
-    return <PromptMode onSubmit={handleQuerySubmit} />;
+  async function handleDemoLaunch(demoId: number, demoQuery: string) {
+    setQuery(demoQuery);
+    setMode("stream");
+
+    try {
+      const result = await startDemo(demoId);
+      if (result.session_id) {
+        setSessionId(result.session_id);
+      }
+    } catch {
+      setEvents([{
+        id: eventCounter.current++,
+        type: "error",
+        stage: "Literature",
+        timestamp: new Date().toISOString(),
+        message: "Failed to start demo. Check that the backend is running at localhost:8000.",
+      }]);
+    }
   }
+
+  if (mode === "prompt") {
+    return <PromptMode onSubmit={handleQuerySubmit} onDemo={handleDemoLaunch} />;
+  }
+
+  const isReplicated = sessionId?.startsWith("demo-") ?? false;
 
   return (
     <StreamMode
@@ -542,6 +611,7 @@ export default function DashboardPage() {
       completed={completed}
       topHypothesisId={topHypothesisId}
       query={query}
+      isReplicated={isReplicated}
     />
   );
 }

@@ -1,101 +1,84 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 const stats = [
-  { label: "Discoveries", value: "2,847" },
-  { label: "Hypotheses Validated", value: "412" },
-  { label: "Active Sessions", value: "23" },
+	{ value: "129K+", label: "Knowledge Graph", sublabel: "nodes" },
+	{ value: "8.1M+", label: "PrimeKG Relationships", sublabel: "edges" },
+	{ value: "10/10", label: "Benchmark Recovery", sublabel: "score" },
 ];
 
-const sampleDiscoveries = [
-  {
-    title: "VEGFA mediates unexpected link between Diabetes and Retinopathy",
-    disease: "Diabetes",
-    novelty: 0.89,
-    path: "Diabetes -> VEGFA -> Diabetic Retinopathy",
-  },
-  {
-    title: "IL-6 pathway connects Rheumatoid Arthritis to Depression",
-    disease: "Rheumatoid Arthritis",
-    novelty: 0.76,
-    path: "Rheumatoid Arthritis -> IL-6 -> Major Depression",
-  },
-  {
-    title: "BRCA1 repair mechanism reveals Ovarian Cancer drug target",
-    disease: "Ovarian Cancer",
-    novelty: 0.92,
-    path: "Ovarian Cancer -> BRCA1 -> PARP Inhibitor Sensitivity",
-  },
+const stages = [
+	"Literature",
+	"Graph",
+	"Reasoning",
+	"Validation",
+	"Experiment",
+	"Protocol",
+	"Cloud Lab",
 ];
 
 export default function Home() {
-  return (
-    <div className="bg-fafafa">
-      {/* Hero */}
-      <section className="mx-auto max-w-7xl px-6 py-24 text-center">
-        <h1 className="text-5xl font-bold tracking-tight text-slate-800">
-          Nexus
-        </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-500">
-          Autonomous biological discovery through ABC reasoning. Uncover hidden
-          connections between diseases, genes, and compounds that no one has
-          explored before.
-        </p>
-        <Link href="/query">
-          <Button className="mt-8 bg-teal-600 px-8 py-3 text-base hover:bg-teal-700">
-            Start a Discovery Session
-          </Button>
-        </Link>
-      </section>
+	return (
+		<div className="px-8 py-20">
+			{/* Hero */}
+			<section className="text-center">
+				<h1 className="font-mono text-6xl font-bold text-teal-600 tracking-tight">
+					NEXUS
+				</h1>
+				<p className="mt-4 text-lg font-sans text-slate-500">
+					Autonomous Biological Discovery Platform
+				</p>
+				<Link href="/query">
+					<button className="glow-button mt-10 rounded-xl bg-teal-600 px-10 py-3.5 text-base font-semibold text-white transition-colors hover:bg-teal-700">
+						Try a Discovery
+					</button>
+				</Link>
+			</section>
 
-      {/* Stats */}
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-          {stats.map((stat) => (
-            <Card key={stat.label} className="text-center">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-3xl font-bold text-teal-600">
-                  {stat.value}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-500">{stat.label}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
+			{/* Stats */}
+			<section className="mx-auto mt-20 max-w-3xl">
+				<div className="grid grid-cols-3 gap-6">
+					{stats.map((stat) => (
+						<div
+							key={stat.label}
+							className="rounded-xl bg-white px-6 py-8 text-center shadow-sm"
+						>
+							<p className="font-mono text-3xl font-bold text-teal-600">
+								{stat.value}
+							</p>
+							<p className="mt-1 text-xs text-slate-400 font-mono">
+								{stat.sublabel}
+							</p>
+							<p className="mt-2 text-sm text-slate-500">
+								{stat.label}
+							</p>
+						</div>
+					))}
+				</div>
+			</section>
 
-      {/* Sample Discoveries */}
-      <section className="mx-auto max-w-7xl px-6 pb-24">
-        <h2 className="mb-6 text-2xl font-semibold text-slate-800">
-          Recent Discoveries
-        </h2>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          {sampleDiscoveries.map((d) => (
-            <Card key={d.title} className="transition-shadow hover:shadow-md">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <Badge variant="secondary" className="bg-teal-50 text-teal-700">
-                    {d.disease}
-                  </Badge>
-                  <span className="text-sm font-medium text-emerald-600">
-                    {(d.novelty * 100).toFixed(0)}% novel
-                  </span>
-                </div>
-                <CardTitle className="mt-2 text-base leading-snug">
-                  {d.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="font-mono text-xs text-slate-400">{d.path}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+			{/* Pipeline Diagram */}
+			<section className="mx-auto mt-24 max-w-4xl">
+				<p className="mb-8 text-center text-sm font-mono text-slate-400 uppercase tracking-widest">
+					Discovery Pipeline
+				</p>
+				<div className="flex items-center justify-center">
+					{stages.map((stage, i) => (
+						<div key={stage} className="flex items-center">
+							<div className="flex flex-col items-center">
+								<div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-600 text-white font-mono text-sm font-semibold">
+									{i + 1}
+								</div>
+								<span className="mt-2 text-xs font-mono text-slate-500">
+									{stage}
+								</span>
+							</div>
+							{i < stages.length - 1 && (
+								<div className="mx-2 h-px w-10 bg-slate-300" />
+							)}
+						</div>
+					))}
+				</div>
+			</section>
+		</div>
+	);
 }

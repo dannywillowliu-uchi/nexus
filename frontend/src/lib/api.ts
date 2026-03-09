@@ -23,7 +23,15 @@ export function streamSessionEvents(
   onEvent: (event: Record<string, unknown>) => void,
 ) {
   const source = new EventSource(`${API_BASE}/sessions/${sessionId}/stream`);
-  source.onmessage = (e) => onEvent(JSON.parse(e.data));
+  source.onmessage = (e) => {
+    const parsed = JSON.parse(e.data);
+    // Flatten SSE envelope: {event_id, event_type, data: {...}} → {...data, type: event_type}
+    const flat = {
+      ...(parsed.data || {}),
+      type: parsed.event_type || parsed.data?.type || "unknown",
+    };
+    onEvent(flat);
+  };
   return source;
 }
 
@@ -49,6 +57,21 @@ export async function getHypothesis(id: string) {
 export async function getResearchOutput(sessionId: string) {
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/research-output`);
   if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getCapabilities() {
+  const res = await fetch(`${API_BASE}/capabilities`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function startDemo(demoId: number, speed: number = 1.0) {
+  const res = await fetch(`${API_BASE}/demo/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ demo_id: demoId, speed }),
+  });
   return res.json();
 }
 

@@ -364,8 +364,9 @@ async def run_pipeline(
 ) -> PipelineResult:
 	"""Run the full adaptive discovery pipeline with checkpoint-driven pivots."""
 	source_name = start_entity or query
+	start_type = _resolve_label(start_type)
 	result = PipelineResult(query=query, start_entity=source_name, start_type=start_type)
-	targets = target_types or DEFAULT_TARGET_TYPES
+	targets = [_resolve_label(t) for t in (target_types or DEFAULT_TARGET_TYPES)]
 	pivot_count = 0
 
 	tracer = get_tracer()

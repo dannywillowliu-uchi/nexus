@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from nexus.api.routes import capabilities, experiments, feed, graph, health, hypotheses, query, sessions
+from nexus.api.routes import capabilities, demo, experiments, feed, graph, health, hypotheses, query, sessions
 from nexus.graph.client import graph_client
 
 
@@ -37,3 +37,4 @@ app.include_router(feed.router, prefix="/api", tags=["feed"])
 app.include_router(graph.router, prefix="/api", tags=["graph"])
 app.include_router(hypotheses.router, prefix="/api", tags=["hypotheses"])
 app.include_router(experiments.router, prefix="/api", tags=["experiments"])
+app.include_router(demo.router, prefix="/api", tags=["demo"])

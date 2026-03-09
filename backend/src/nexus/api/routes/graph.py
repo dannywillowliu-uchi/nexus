@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 
 from nexus.graph.abc import find_abc_hypotheses
+from nexus.pipeline.orchestrator import _resolve_label
 
 router = APIRouter()
 
@@ -12,9 +13,10 @@ async def explore_graph(
 	depth: int = Query(default=1, ge=1, le=5),
 ):
 	try:
+		resolved_type = _resolve_label(entity_type)
 		hypotheses = await find_abc_hypotheses(
 			source_name=entity_name,
-			source_type=entity_type,
+			source_type=resolved_type,
 			max_results=depth * 10,
 		)
 		nodes = []

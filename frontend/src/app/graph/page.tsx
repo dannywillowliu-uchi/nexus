@@ -332,7 +332,7 @@ export default function GraphPage() {
       <div className="flex min-h-0 flex-1 gap-4">
         {/* Graph Canvas */}
         <div className="flex-[3]">
-          <Card className="h-full">
+          <Card className="h-full rounded-xl">
             <CardContent className="relative h-full p-0">
               <div
                 ref={graphContainerRef}
@@ -392,7 +392,7 @@ export default function GraphPage() {
         {/* Right Sidebar */}
         <div className="flex w-72 flex-col gap-4">
           {/* Legend */}
-          <Card size="sm">
+          <Card size="sm" className="rounded-xl">
             <CardHeader>
               <CardTitle className="text-sm font-semibold text-slate-700">Legend</CardTitle>
             </CardHeader>
@@ -414,7 +414,7 @@ export default function GraphPage() {
           </Card>
 
           {/* Node Detail */}
-          <Card size="sm">
+          <Card size="sm" className="rounded-xl">
             <CardHeader>
               <CardTitle className="text-sm font-semibold text-slate-700">
                 Node Detail
@@ -456,7 +456,7 @@ export default function GraphPage() {
           </Card>
 
           {/* Live Feed */}
-          <Card size="sm" className="flex min-h-0 flex-1 flex-col">
+          <Card size="sm" className="flex min-h-0 flex-1 flex-col rounded-xl">
             <CardHeader>
               <CardTitle className="text-sm font-semibold text-slate-700">
                 Live Feed
