@@ -25,12 +25,18 @@ export function streamSessionEvents(
   const source = new EventSource(`${API_BASE}/sessions/${sessionId}/stream`);
   source.onmessage = (e) => {
     const parsed = JSON.parse(e.data);
+    // Skip keepalive pings
+    if (parsed.event_type === "keepalive") return;
     // Flatten SSE envelope: {event_id, event_type, data: {...}} → {...data, type: event_type}
     const flat = {
       ...(parsed.data || {}),
       type: parsed.event_type || parsed.data?.type || "unknown",
     };
     onEvent(flat);
+    // Close stream after pipeline completes to prevent auto-reconnect
+    if (parsed.event_type === "pipeline_complete") {
+      source.close();
+    }
   };
   return source;
 }
