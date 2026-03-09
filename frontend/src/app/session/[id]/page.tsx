@@ -485,16 +485,17 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 	}, []);
 
 	useEffect(() => {
-		const source = streamSessionEvents(id, handleEvent);
+		const source = streamSessionEvents(id, (event) => {
+			setConnected(true);
+			handleEvent(event);
+		});
 
 		source.onopen = () => setConnected(true);
-		source.onerror = () => setConnected(false);
-
-		// EventSource auto-reconnects, but set connected on first message
-		const origOnMessage = source.onmessage;
-		source.onmessage = (e) => {
-			setConnected(true);
-			origOnMessage?.call(source, e);
+		source.onerror = () => {
+			// Only set disconnected if source wasn't intentionally closed
+			if (source.readyState === EventSource.CLOSED) {
+				setConnected(false);
+			}
 		};
 
 		setConnected(true);
