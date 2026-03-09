@@ -12,6 +12,7 @@ from nexus.agents.literature.extract import Triple
 from nexus.agents.reasoning_agent import generate_quick_summaries, generate_research_brief
 from nexus.checkpoint.agent import run_checkpoint
 from nexus.checkpoint.models import CheckpointContext, CheckpointDecision
+from nexus.config import settings
 from nexus.graph.abc import ABCHypothesis, find_abc_hypotheses
 from nexus.graph.client import graph_client
 from nexus.tools.validation_planner import run_validation_plan
@@ -821,7 +822,7 @@ async def run_pipeline(
 
 				# LLM-based lab validation: generate simulated experimental results
 				import anthropic
-				client = anthropic.AsyncAnthropic()
+				client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 				lab_prompt = f"""You are a computational biology lab simulation system. Given a drug repurposing hypothesis, generate realistic simulated experimental validation results as if they came from a cloud lab (Strateos) running a dose-response viability assay.
 
