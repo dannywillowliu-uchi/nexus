@@ -10,10 +10,13 @@ from typing import Callable
 from nexus.agents.literature.agent import LiteratureResult, run_literature_agent
 from nexus.agents.literature.extract import Triple
 from nexus.agents.reasoning_agent import generate_quick_summaries, generate_research_brief
+from nexus.agents.viz_agent import run_viz_agent
 from nexus.checkpoint.agent import run_checkpoint
 from nexus.checkpoint.models import CheckpointContext, CheckpointDecision
 from nexus.graph.abc import ABCHypothesis, find_abc_hypotheses
 from nexus.graph.client import graph_client
+from nexus.lab.tools import design_experiment, interpret_results, validate_and_execute_protocol
+from nexus.output.pitch import generate_full_output
 from nexus.tools.validation_planner import run_validation_plan
 from nexus.tracing.tracer import get_tracer
 
@@ -702,11 +705,107 @@ async def run_pipeline(
 			"validation_results": len(result.validation_results),
 		})
 
+		# --- Experiment stage ---
+		result.step = PipelineStep.EXPERIMENT
+		await _emit(on_event, "stage_start", {"stage": "experiment"})
+
+		if result.scored_hypotheses:
+			top_hyp = result.scored_hypotheses[0]
+
+			try:
+				# Design experiment from top hypothesis
+				spec = await design_experiment(top_hyp, budget_tier="minimal")
+
+				# Execute via simulator
+				exec_result = await validate_and_execute_protocol(spec, backend="simulator")
+				exec_result["hypothesis_title"] = top_hyp.get("title", "")
+
+				if exec_result.get("status") == "simulation_complete":
+					sim_results = exec_result.get("simulated_results", {})
+
+					# Interpret results
+					interpretation = await interpret_results(spec, sim_results)
+					exec_result["interpretation"] = interpretation
+					verdict = interpretation.get("verdict", "inconclusive")
+
+					if verdict == "validated":
+						# BioRender visualization
+						result.step = PipelineStep.VISUALIZATION
+						await _emit(on_event, "stage_start", {"stage": "visualization"})
+
+						viz_data = None
+						if result.hypotheses:
+							viz_data = await run_viz_agent(result.hypotheses[0], pivot_trail=result.pivots)
+
+						# Generate full research output
+						lit_stats = None
+						if result.literature_result:
+							lit_stats = {
+								"papers": len(result.literature_result.papers),
+								"triples": len(result.literature_result.triples),
+							}
+						graph_stats = {"hypotheses": len(result.hypotheses), "scored": len(result.scored_hypotheses)}
+
+						output = await generate_full_output(
+							hypothesis=top_hyp,
+							pipeline_query=result.query,
+							pipeline_start_entity=result.start_entity,
+							pipeline_start_type=result.start_type,
+							checkpoint_log=result.checkpoint_log,
+							pivots=result.pivots,
+							branches=result.branches,
+							validation_results=result.validation_results,
+							literature_stats=lit_stats,
+							graph_stats=graph_stats,
+						)
+
+						exec_result["research_output"] = {
+							"narrative": output.discovery_narrative,
+							"pitch": output.pitch_markdown,
+							"visuals": [{"label": v.label, "svg": v.svg, "asset_type": v.asset_type} for v in output.visuals],
+						}
+						if viz_data:
+							exec_result["biorender_viz"] = viz_data
+
+						await _emit(on_event, "stage_complete", {"stage": "visualization"})
+
+					else:
+						# Refuted or inconclusive -- store failure analysis
+						exec_result["failure_analysis"] = {
+							"verdict": verdict,
+							"confidence": interpretation.get("confidence", 0),
+							"reasoning": interpretation.get("reasoning", ""),
+							"concerns": interpretation.get("concerns", []),
+							"next_steps": interpretation.get("next_steps", []),
+						}
+
+				else:
+					# Technical/lab error
+					exec_result["error_analysis"] = {
+						"status": exec_result.get("status", "unknown"),
+						"reason": "Experiment could not complete simulation",
+					}
+					if "validation" in exec_result:
+						exec_result["error_analysis"]["validation"] = exec_result["validation"]
+
+				result.experiment_results.append(exec_result)
+
+			except Exception as exc:
+				logger.warning("Experiment stage failed: %s", exc)
+				result.experiment_results.append({
+					"status": "error",
+					"error": str(exc),
+					"hypothesis_title": top_hyp.get("title", ""),
+				})
+
+		await _emit(on_event, "stage_complete", {"stage": "experiment"})
+
 		result.step = PipelineStep.COMPLETED
 		await _emit(on_event, "pipeline_complete", {
 			"hypotheses": len(result.scored_hypotheses),
 			"briefs": len(result.research_briefs),
 			"validations": len(result.validation_results),
+			"experiments": len(result.experiment_results),
 			"pivots": len(result.pivots),
 			"branches": len(result.branches),
 		})
