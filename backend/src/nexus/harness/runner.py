@@ -84,7 +84,8 @@ async def run_research_session(
 
 		try:
 			experiment_spec = await design_experiment(scored, budget_tier="minimal")
-			exec_result = await validate_and_execute_protocol(experiment_spec, backend="simulator")
+			plausibility = min(max(scored.get("overall_score", 0.5), 0.1), 0.9)
+			exec_result = await validate_and_execute_protocol(experiment_spec, backend="simulator", hypothesis_plausibility=plausibility)
 
 			sim_data = exec_result.get("simulated_results", exec_result.get("cloud_lab_results", {}))
 			if sim_data:
@@ -126,7 +127,7 @@ async def run_research_session(
 			if exp_verdict == "refuted" and scored.get("budget_tier_used") != "standard":
 				scored["budget_tier_used"] = "standard"
 				retry_spec = await design_experiment(scored, budget_tier="standard")
-				retry_result = await validate_and_execute_protocol(retry_spec, backend="simulator")
+				retry_result = await validate_and_execute_protocol(retry_spec, backend="simulator", hypothesis_plausibility=plausibility)
 				retry_data = retry_result.get("simulated_results", retry_result.get("cloud_lab_results", {}))
 				if retry_data:
 					retry_interp = await interpret_results(retry_spec, retry_data)

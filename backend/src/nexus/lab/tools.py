@@ -155,6 +155,7 @@ async def design_experiment(
 async def validate_and_execute_protocol(
 	experiment_spec: dict,
 	backend: str = "simulator",
+	hypothesis_plausibility: float = 0.6,
 ) -> dict:
 	"""Validate an experiment spec and execute the protocol.
 
@@ -190,7 +191,7 @@ async def validate_and_execute_protocol(
 		return result
 
 	if backend == "simulator":
-		sim_results = generate_simulated_results(spec, hypothesis_plausibility=0.6, seed=42)
+		sim_results = generate_simulated_results(spec, hypothesis_plausibility=hypothesis_plausibility)
 		result["simulated_results"] = sim_results.to_dict()
 		result["status"] = "simulation_complete"
 

@@ -620,6 +620,15 @@ async def run_pipeline(
 			if i < len(summaries):
 				sh["summary"] = summaries[i]
 
+		# Emit hypothesis_scored events so the UI shows progress
+		for i, sh in enumerate(result.scored_hypotheses[:max_hypotheses]):
+			await _emit(on_event, "hypothesis_scored", {
+				"hypothesis_id": sh.get("hypothesis_id", f"hyp-{i}"),
+				"title": sh.get("title", ""),
+				"score": sh.get("overall_score", 0),
+				"research_brief": sh.get("summary", ""),
+			})
+
 		# Detailed research briefs for the top 3
 		papers_dicts = []
 		if lit_result:
@@ -630,6 +639,10 @@ async def run_pipeline(
 
 		for i, abc_hyp in enumerate(top_abc[:3]):
 			try:
+				await _emit(on_event, "progress", {
+					"stage": "reasoning",
+					"message": f"Generating research brief {i + 1}/3: {abc_hyp.a_name} -> {abc_hyp.b_name} -> {abc_hyp.c_name}",
+				})
 				brief = await generate_research_brief(abc_hyp, triples_for_reasoning, papers_dicts)
 				brief_dict = {
 					"hypothesis_title": brief.hypothesis_title,
@@ -651,6 +664,13 @@ async def run_pipeline(
 				result.research_briefs.append(brief_dict)
 				if i < len(result.scored_hypotheses):
 					result.scored_hypotheses[i]["research_brief"] = brief_dict
+					# Re-emit with enriched data
+					await _emit(on_event, "hypothesis_scored", {
+						"hypothesis_id": result.scored_hypotheses[i].get("hypothesis_id", f"hyp-{i}"),
+						"title": result.scored_hypotheses[i].get("title", ""),
+						"score": result.scored_hypotheses[i].get("overall_score", 0),
+						"research_brief": brief.researcher_narrative,
+					})
 			except Exception as exc:
 				logger.warning("Research brief generation failed for hypothesis %d: %s", i, exc)
 
@@ -717,8 +737,9 @@ async def run_pipeline(
 				# Design experiment from top hypothesis
 				spec = await design_experiment(top_hyp, budget_tier="minimal")
 
-				# Execute via simulator
-				exec_result = await validate_and_execute_protocol(spec, backend="simulator")
+				# Execute via simulator, plausibility from hypothesis score
+				plausibility = min(max(top_hyp.get("overall_score", 0.5), 0.1), 0.9)
+				exec_result = await validate_and_execute_protocol(spec, backend="simulator", hypothesis_plausibility=plausibility)
 				exec_result["hypothesis_title"] = top_hyp.get("title", "")
 
 				if exec_result.get("status") == "simulation_complete":

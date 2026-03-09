@@ -90,7 +90,7 @@ def generate_simulated_results(
 
 	for conc in concentrations:
 		mean_response = _sigmoidal(conc, ic50, hill, bottom, top)
-		noise_std = 0.04 + 0.02 * (1 - mean_response)  # More noise at lower viability
+		noise_std = 0.03 * mean_response + 0.01  # Proportional noise: ~4% CV at high signal, ~10% at low
 		values = [max(0, rng.gauss(mean_response, noise_std)) for _ in range(replicates)]
 		all_compound_values.extend(values)
 
@@ -121,14 +121,9 @@ def generate_simulated_results(
 	z_factor = 1 - 3 * (std_neg + std_pos) / separation if separation > 0 else -1
 	signal_to_background = mean_neg / mean_pos if mean_pos > 0 else 0
 
-	# Overall CV across compound wells
-	all_mean = sum(all_compound_values) / len(all_compound_values) if all_compound_values else 0
-	all_std = (
-		(sum((v - all_mean) ** 2 for v in all_compound_values) / max(len(all_compound_values) - 1, 1)) ** 0.5
-		if all_compound_values
-		else 0
-	)
-	overall_cv = (all_std / all_mean * 100) if all_mean > 0 else 0
+	# Max within-concentration CV (not pooled across curve, which inflates CV for active compounds)
+	per_conc_cvs = [dr["cv_percent"] for dr in dose_response if dr["cv_percent"] > 0]
+	overall_cv = max(per_conc_cvs) if per_conc_cvs else 0
 
 	result.qc_metrics = {
 		"z_factor": round(z_factor, 4),
